@@ -45,14 +45,19 @@ impl Ray {
 }
 
 #[derive(Clone)]
-pub struct Sphere {
-    origin: Point3f,
-    radius: f32,
+pub struct Material {
     surface_color: Color,
     reflectivity: f32,
     transparency: f32,
     refractive_index: f32,
     emission_color: Color
+}
+
+#[derive(Clone)]
+pub struct Sphere {
+    origin: Point3f,
+    radius: f32,
+    mat: Material
 }
 
 pub struct Scene {
@@ -105,11 +110,11 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
         let hit_normal = (hit_pos - sphere.origin).normalize();
         let incident_angle = -ray.dir.dot(hit_normal);
         let hit_normal = if incident_angle > 0.0 { hit_normal } else { -hit_normal };
-        if (sphere.transparency > 0.0 || sphere.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
+        if (sphere.mat.transparency > 0.0 || sphere.mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
             let n = if incident_angle > 0.0 {
-                1.0 / sphere.refractive_index
+                1.0 / sphere.mat.refractive_index
             } else {
-                sphere.refractive_index
+                sphere.mat.refractive_index
             };
             let r0 = ((n - 1.0) / (n + 1.0)).powi(2);
             let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
@@ -118,19 +123,19 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
             let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
             let reflection_color = trace(image, scene, &reflection_ray, depth + 1);
 
-            let refraction_color = if sphere.transparency > 0.0 {
+            let refraction_color = if sphere.mat.transparency > 0.0 {
                 let refract_dir = refract(ray.dir, hit_normal, n);
                 let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
                 trace(image, scene, &refraction_ray, depth + 1)
             } else { Color::zero() };
 
-            sphere.emission_color + sphere.surface_color.mul_element_wise(
-                reflection_color * fresnel + refraction_color * (1.0 - fresnel) * sphere.transparency
+            sphere.mat.emission_color + sphere.mat.surface_color.mul_element_wise(
+                reflection_color * fresnel + refraction_color * (1.0 - fresnel) * sphere.mat.transparency
             )
         } else {
             let mut surface_color = Color::zero();
             for light_sphere in &scene.spheres {
-                if light_sphere.emission_color != Color::zero() {
+                if light_sphere.mat.emission_color != Color::zero() {
                     let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
                     let is_shadow = scene.spheres.iter().any(|other_sphere| {
                         intersect_sphere(other_sphere, &shadow_ray).is_some()
@@ -139,12 +144,12 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
                         if shadow_angle > 0.0 {
                             surface_color += shadow_angle *
-                                sphere.surface_color.mul_element_wise(light_sphere.emission_color);
+                                sphere.mat.surface_color.mul_element_wise(light_sphere.mat.emission_color);
                         }
                     };
                 }
             }
-            sphere.emission_color + surface_color
+            sphere.mat.emission_color + surface_color
         }
     }
     else {
@@ -155,7 +160,7 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
 fn render(scene: &Scene, image_width: u32, image_height: u32) -> DynamicImage {
     let mut image = DynamicImage::new_rgb8(image_width, image_height);
 
-    let fov = 90.0f32;
+    let fov = 60.0f32;
     let tangent = (fov / 2.0f32).to_radians().tan();
     let aspect_ratio = image_height as f32 / image_width as f32;
 
@@ -181,47 +186,57 @@ fn main() {
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
-                surface_color: Color::new(1.0, 0.32, 0.36),
-                reflectivity: 1.0,
-                transparency: 0.5,
-                refractive_index: 1.1,
-                emission_color: Color::zero()
+                mat: Material {
+                    surface_color: Color::new(1.0, 0.32, 0.36),
+                    reflectivity: 1.0,
+                    transparency: 0.5,
+                    refractive_index: 1.1,
+                    emission_color: Color::zero()
+                }
             },
             Sphere {
                 origin: Point3::new(2.0, -2.0, -6.0),
                 radius: 2.0,
-                surface_color: Color::new(0.90, 0.76, 0.46),
-                reflectivity: 1.0,
-                transparency: 0.5,
-                refractive_index: 1.1,
-                emission_color: Color::zero()
+                mat: Material {
+                    surface_color: Color::new(0.90, 0.76, 0.46),
+                    reflectivity: 1.0,
+                    transparency: 0.5,
+                    refractive_index: 1.1,
+                    emission_color: Color::zero()
+                }
             },
             Sphere {
                 origin: Point3::new(-4.0, -2.0, -8.0),
                 radius: 2.0,
-                surface_color: Color::new(1.0, 1.0, 0.3),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(3.0, 3.0, 0.9)
+                mat: Material {
+                    surface_color: Color::new(1.0, 1.0, 0.3),
+                    reflectivity: 0.0,
+                    transparency: 0.0,
+                    refractive_index: 1.1,
+                    emission_color: Color::new(3.0, 3.0, 0.9)
+                }
             },
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
-                surface_color: Color::new(0.0, 0.0, 0.0),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(0.5, 0.5, 0.5)
+                mat: Material {
+                    surface_color: Color::new(0.0, 0.0, 0.0),
+                    reflectivity: 0.0,
+                    transparency: 0.0,
+                    refractive_index: 1.1,
+                    emission_color: Color::new(0.5, 0.5, 0.5)
+                }
             },
             Sphere {
                 origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
-                surface_color: Color::new(0.8, 0.8, 0.8),
-                reflectivity: 0.7,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(0.0, 0.0, 0.0)
+                mat: Material {
+                    surface_color: Color::new(0.8, 0.8, 0.8),
+                    reflectivity: 0.7,
+                    transparency: 0.0,
+                    refractive_index: 1.1,
+                    emission_color: Color::new(0.0, 0.0, 0.0)
+                }
             }
         ],
         camera_pos: Point3::new(0.0, 0.0, 10.0)
