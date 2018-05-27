@@ -10,9 +10,6 @@ use cgmath::prelude::*;
 use cgmath::Point3;
 use cgmath::Vector3;
 
-use image::ColorType;
-use image::png::PNGEncoder;
-
 use rayon::prelude::*;
 
 use chrono::prelude::*;
@@ -64,24 +61,49 @@ pub struct Material {
 pub struct Sphere {
     origin: Point3f,
     radius: f32,
-    mat: Material
+    mat_id: usize
+}
+
+impl Sphere {
+    fn intersect(self: &Self, ray: &Ray) -> Option<(f32, f32)> {
+        let disp = self.origin - ray.origin;
+        let ip = ray.dir.dot(disp);
+        if ip < 0.0 { return None; }
+        let discriminant = ip * ip - disp.magnitude2() + self.radius * self.radius;
+        if discriminant >= 0.0 {
+            Some((ip - discriminant.sqrt(), ip + discriminant.sqrt()))
+        }
+        else {
+            None
+        }
+    }
+}
+
+pub struct Vertex {
+    origin: Point3f,
+    radius: f32,
+    mat_id: usize
 }
 
 pub struct Scene {
     camera_pos: Point3f,
-    spheres: Vec<Sphere>
+    spheres: Vec<Sphere>,
+    materials: Vec<Material>
 }
 
-fn intersect_sphere(sphere: &Sphere, ray: &Ray) -> Option<(f32, f32)> {
-    let disp = sphere.origin - ray.origin;
-    let ip = ray.dir.dot(disp);
-    if ip < 0.0 { return None; }
-    let discriminant = ip * ip - disp.magnitude2() + sphere.radius * sphere.radius;
-    if discriminant >= 0.0 {
-        Some((ip - discriminant.sqrt(), ip + discriminant.sqrt()))
+impl Scene {
+    pub fn add_material(self: &mut Self, material: Material) -> usize {
+        let id = self.materials.len();
+        self.materials.push(material);
+        id
     }
-    else {
-        None
+
+    pub fn get_material(self: &Self, id: usize) -> &Material {
+        &self.materials[id]
+    }
+
+    pub fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
+        &mut self.materials[id]
     }
 }
 
@@ -103,7 +125,7 @@ fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
     let mut tnear = f32::INFINITY;
 
     for sphere in &scene.spheres {
-        if let Some((tnear_hit, tfar_hit)) = intersect_sphere(sphere, &ray) {
+        if let Some((tnear_hit, tfar_hit)) = sphere.intersect(&ray) {
             let t = if tnear_hit < 0.0 { tfar_hit } else { tnear_hit };
             if t < tnear {
                 tnear = t;
@@ -113,15 +135,16 @@ fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
     }
 
     if let Some(sphere) = closest_sphere {
+        let mat = scene.get_material(sphere.mat_id);
         let hit_pos = ray.origin + tnear * ray.dir;
         let hit_normal = (hit_pos - sphere.origin).normalize();
         let incident_angle = -ray.dir.dot(hit_normal);
         let hit_normal = if incident_angle > 0.0 { hit_normal } else { -hit_normal };
-        if (sphere.mat.transparency > 0.0 || sphere.mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
+        if (mat.transparency > 0.0 || mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
             let n = if incident_angle > 0.0 {
-                1.0 / sphere.mat.refractive_index
+                1.0 / mat.refractive_index
             } else {
-                sphere.mat.refractive_index
+                mat.refractive_index
             };
             let r0 = ((n - 1.0) / (n + 1.0)).powi(2);
             let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
@@ -130,33 +153,34 @@ fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
             let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
             let reflection_color = trace(scene, &reflection_ray, depth + 1);
 
-            let refraction_color = if sphere.mat.transparency > 0.0 {
+            let refraction_color = if mat.transparency > 0.0 {
                 let refract_dir = refract(ray.dir, hit_normal, n);
                 let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
                 trace(scene, &refraction_ray, depth + 1)
             } else { Color::zero() };
 
-            sphere.mat.emission_color + sphere.mat.surface_color.mul_element_wise(
-                reflection_color * fresnel + refraction_color * (1.0 - fresnel) * sphere.mat.transparency
+            mat.emission_color + mat.surface_color.mul_element_wise(
+                reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
             )
         } else {
             let mut surface_color = Color::zero();
             for light_sphere in &scene.spheres {
-                if light_sphere.mat.emission_color != Color::zero() {
+                let light_mat = scene.get_material(light_sphere.mat_id);
+                if light_mat.emission_color != Color::zero() {
                     let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
                     let is_shadow = scene.spheres.iter().any(|other_sphere| {
-                        intersect_sphere(other_sphere, &shadow_ray).is_some()
+                        other_sphere.intersect(&shadow_ray).is_some()
                     });
                     if !is_shadow {
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
                         if shadow_angle > 0.0 {
                             surface_color += shadow_angle *
-                                sphere.mat.surface_color.mul_element_wise(light_sphere.mat.emission_color);
+                                mat.surface_color.mul_element_wise(light_mat.emission_color);
                         }
                     };
                 }
             }
-            sphere.mat.emission_color + surface_color
+            mat.emission_color + surface_color
         }
     }
     else {
@@ -192,61 +216,68 @@ fn render(pixels: &mut [u8], scene: &Scene, bounds: (u32, u32), upper_left: (u32
 
 fn main() {
     let scene = Scene {
+        materials: vec![
+            Material {
+                surface_color: Color::new(1.0, 0.32, 0.36),
+                reflectivity: 1.0,
+                transparency: 0.5,
+                refractive_index: 1.1,
+                emission_color: Color::zero()
+            },
+            Material {
+                surface_color: Color::new(0.90, 0.76, 0.46),
+                reflectivity: 1.0,
+                transparency: 0.5,
+                refractive_index: 1.1,
+                emission_color: Color::zero()
+            },
+            Material {
+                surface_color: Color::new(1.0, 1.0, 0.3),
+                reflectivity: 0.0,
+                transparency: 0.0,
+                refractive_index: 1.1,
+                emission_color: Color::new(3.0, 3.0, 0.9)
+            },
+            Material {
+                surface_color: Color::new(0.0, 0.0, 0.0),
+                reflectivity: 0.0,
+                transparency: 0.0,
+                refractive_index: 1.1,
+                emission_color: Color::new(0.5, 0.5, 0.5)
+            },
+            Material {
+                surface_color: Color::new(0.8, 0.8, 0.8),
+                reflectivity: 0.7,
+                transparency: 0.0,
+                refractive_index: 1.1,
+                emission_color: Color::new(0.0, 0.0, 0.0)
+            }
+        ],
         spheres: vec![
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
-                mat: Material {
-                    surface_color: Color::new(1.0, 0.32, 0.36),
-                    reflectivity: 1.0,
-                    transparency: 0.5,
-                    refractive_index: 1.1,
-                    emission_color: Color::zero()
-                }
+                mat_id: 0
             },
             Sphere {
                 origin: Point3::new(2.0, -2.0, -6.0),
                 radius: 2.0,
-                mat: Material {
-                    surface_color: Color::new(0.90, 0.76, 0.46),
-                    reflectivity: 1.0,
-                    transparency: 0.5,
-                    refractive_index: 1.1,
-                    emission_color: Color::zero()
-                }
+                mat_id: 1
             },
             Sphere {
                 origin: Point3::new(-4.0, -2.0, -8.0),
                 radius: 2.0,
-                mat: Material {
-                    surface_color: Color::new(1.0, 1.0, 0.3),
-                    reflectivity: 0.0,
-                    transparency: 0.0,
-                    refractive_index: 1.1,
-                    emission_color: Color::new(3.0, 3.0, 0.9)
-                }
+                mat_id: 2
             },
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
-                mat: Material {
-                    surface_color: Color::new(0.0, 0.0, 0.0),
-                    reflectivity: 0.0,
-                    transparency: 0.0,
-                    refractive_index: 1.1,
-                    emission_color: Color::new(0.5, 0.5, 0.5)
-                }
+                mat_id: 3
             },
             Sphere {
                 origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
-                mat: Material {
-                    surface_color: Color::new(0.8, 0.8, 0.8),
-                    reflectivity: 0.7,
-                    transparency: 0.0,
-                    refractive_index: 1.1,
-                    emission_color: Color::new(0.0, 0.0, 0.0)
-                }
+                mat_id: 4
             }
         ],
         camera_pos: Point3::new(0.0, 0.0, 10.0)
