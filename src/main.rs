@@ -1,16 +1,21 @@
 extern crate cgmath;
 extern crate image;
+extern crate rayon;
+extern crate chrono;
 
 use std::f32;
+use std::fs::File;
 
 use cgmath::prelude::*;
 use cgmath::Point3;
 use cgmath::Vector3;
 
-use image::DynamicImage;
-use image::GenericImage;
-use image::Rgba;
-use image::Pixel;
+use image::ColorType;
+use image::png::PNGEncoder;
+
+use rayon::prelude::*;
+
+use chrono::prelude::*;
 
 type Point3f = Point3<f32>;
 type Vector3f = Vector3<f32>;
@@ -26,11 +31,13 @@ fn gamma_decode(encoded: f32) -> f32 {
     encoded.powf(GAMMA)
 }
 
-pub fn color_to_rgba(color: &Color) -> Rgba<u8> {
-    Rgba::from_channels((gamma_encode(color.x.min(1.0)) * 255.0) as u8,
-                        (gamma_encode(color.y.min(1.0)) * 255.0) as u8,
-                        (gamma_encode(color.z.min(1.0)) * 255.0) as u8,
-                        255)
+pub fn color_to_rgba(color: &Color) -> [u8; 4] {
+    [
+        (gamma_encode(color.x.min(1.0)) * 255.0) as u8,
+        (gamma_encode(color.y.min(1.0)) * 255.0) as u8,
+        (gamma_encode(color.z.min(1.0)) * 255.0) as u8,
+        255
+    ]
 }
 
 pub struct Ray {
@@ -90,7 +97,7 @@ fn refract(dir: Vector3f, normal: Vector3f, n: f32) -> Vector3f {
 
 const MAX_RAY_DEPTH: u32 = 5;
 
-fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Color {
+fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
 
     let mut closest_sphere: Option<Sphere> = None;
     let mut tnear = f32::INFINITY;
@@ -121,12 +128,12 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
 
             let reflect_dir = reflect(ray.dir, hit_normal);
             let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
-            let reflection_color = trace(image, scene, &reflection_ray, depth + 1);
+            let reflection_color = trace(scene, &reflection_ray, depth + 1);
 
             let refraction_color = if sphere.mat.transparency > 0.0 {
                 let refract_dir = refract(ray.dir, hit_normal, n);
                 let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
-                trace(image, scene, &refraction_ray, depth + 1)
+                trace(scene, &refraction_ray, depth + 1)
             } else { Color::zero() };
 
             sphere.mat.emission_color + sphere.mat.surface_color.mul_element_wise(
@@ -157,27 +164,30 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> Colo
     }
 }
 
-fn render(scene: &Scene, image_width: u32, image_height: u32) -> DynamicImage {
-    let mut image = DynamicImage::new_rgb8(image_width, image_height);
-
+fn render(pixels: &mut [u8], scene: &Scene, bounds: (u32, u32), upper_left: (u32, u32), lower_right: (u32, u32)) {
     let fov = 60.0f32;
     let tangent = (fov / 2.0f32).to_radians().tan();
-    let aspect_ratio = image_height as f32 / image_width as f32;
+    let aspect_ratio = bounds.1 as f32 / bounds.0 as f32;
 
-    for j in 0..image_height {
-        for i in 0..image_width {
+    let iter_width = lower_right.0 - upper_left.0;
+    let iter_height = lower_right.1 - upper_left.1;
+    for j in 0..iter_height {
+        for i in 0..iter_width {
             let prim_ray_dir = Vector3::new(
-                ((2.0 * i as f32 / image_width as f32) - 1.0) * tangent,
-                -((2.0 * j as f32 / image_width as f32) - aspect_ratio) * tangent,
+                ((2.0 * (upper_left.0 + i) as f32 / bounds.0 as f32) - 1.0) * tangent,
+                -((2.0 * (upper_left.1 + j) as f32 / bounds.0 as f32) - aspect_ratio) * tangent,
                 -1.0).normalize();
 
             let prim_ray = Ray::new(scene.camera_pos, prim_ray_dir);
 
-            let color = trace(&mut image, &scene, &prim_ray, 0);
-            image.put_pixel(i, j, color_to_rgba(&color));
+            let color = trace(&scene, &prim_ray, 0);
+            let color = color_to_rgba(&color);
+            pixels[(4*(j * iter_width + i)) as usize] = color[0];
+            pixels[(4*(j * iter_width + i) + 1) as usize] = color[1];
+            pixels[(4*(j * iter_width + i) + 2) as usize] = color[2];
+            pixels[(4*(j * iter_width + i) + 3) as usize] = color[3];
         }
     }
-    return image;
 }
 
 fn main() {
@@ -241,6 +251,51 @@ fn main() {
         ],
         camera_pos: Point3::new(0.0, 0.0, 10.0)
     };
-    let image = render(&scene, 1920, 1080);
-    image.save("result.png").unwrap();
+
+    let args: Vec<String> = std::env::args().collect();
+    let multithreading = match args.len() {
+        1 => {
+            true
+        }
+        2 => {
+            if args[1] == "--single-thread" {
+                false
+            } else {
+                eprintln!("Invalid argument!");
+                std::process::exit(1);
+            }
+        }
+        _ => {
+            eprintln!("Invalid argument!");
+            std::process::exit(1);
+        }
+    };
+
+    let image_width: u32 = 1920;
+    let image_height: u32 = 1080;
+    let mut pixels = vec![0; (image_width * image_height * 4) as usize];
+
+    if multithreading {
+        let time = Local::now();
+        let bands: Vec<(usize, &mut [u8])> = pixels
+            .chunks_mut((image_width * 4) as usize)
+            .enumerate()
+            .collect();
+
+        bands.into_par_iter().for_each(|(i, band)| {
+            let band_upper_left = (0, i as u32);
+            let band_lower_right = (image_width, i as u32 + 1);
+            render(band, &scene, (image_width, image_height), band_upper_left, band_lower_right);
+        });
+
+        println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
+    }
+    else {
+        let time = Local::now();
+        render(&mut pixels, &scene, (image_width, image_height), (0, 0), (image_width, image_height));
+
+        println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
+    }
+
+    image::save_buffer("result.png", &pixels, 1920, 1080, image::RGBA(8)).unwrap();
 }
