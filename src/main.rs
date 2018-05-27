@@ -60,12 +60,13 @@ pub struct Sphere {
     origin: Point3f,
     radius: f32,
     color: Color,
-    is_glass: bool
+    reflectivity: f32,
+    transparency: f32
 }
 
 impl Sphere {
-    pub fn new(origin: Point3f, radius: f32, color: Color, is_glass: bool) -> Self {
-        Sphere { origin, radius, color, is_glass }
+    pub fn new(origin: Point3f, radius: f32, color: Color, reflectivity: f32, transparency: f32) -> Self {
+        Sphere { origin, radius, color, reflectivity, transparency }
     }
 }
 
@@ -78,6 +79,7 @@ pub struct Scene {
 fn intersect_sphere(sphere: &Sphere, ray: &Ray) -> Option<(f32, f32)> {
     let disp = sphere.origin - ray.origin;
     let ip = ray.dir.dot(disp);
+    if ip < 0.0 { return None; }
     let discriminant = ip * ip - disp.magnitude2() + sphere.radius * sphere.radius;
     if discriminant >= 0.0 {
         Some((ip - discriminant.sqrt(), ip + discriminant.sqrt()))
@@ -117,16 +119,18 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> imag
 
     let min_hit_pos = ray.origin + tnear * ray.dir;
     if let Some(sphere) = closest_sphere {
-        /*
         if sphere.is_glass && depth < MAX_RAY_DEPTH {
-            let reflection_ray = reflect(ray.dir, hit_ray.dir);
+            let reflect_dir = reflect(ray.dir, hit_ray.dir);
+            let reflection_ray = Ray::new(min_hit_pos, reflect_dir);
+            let reflection_color = trace(image, scene, &reflection_ray, depth + 1);
+            let refract_dir = refract(ray.dir, hit_ray.dir);
+            let refraction_ray = Ray::new(min_hit_pos, refract_dir);
+            let refraction_color = trace(image, scene, &refraction_ray, depth + 1);
         }
-        */
         let shadow_ray = Ray::new(min_hit_pos, scene.light_pos - min_hit_pos);
         let is_shadow = scene.spheres.iter().any(|other_sphere| {
             intersect_sphere(other_sphere, &shadow_ray).is_some()
         });
-        let is_shadow = false;
         if is_shadow {
             Rgba::from_channels(0, 0, 0, 0)
         }
@@ -142,24 +146,21 @@ fn trace(image: &mut DynamicImage, scene: &Scene, ray: &Ray, depth: u32) -> imag
 fn render(scene: &Scene, image_width: u32, image_height: u32) -> DynamicImage {
     let depth = 3;
 
-    let camera_pos = Point3::new(0.0, 0.0, 0.0);
-    let light_pos = Point3::new(0.0, 2.0, -2.0);
-
     let mut image = DynamicImage::new_rgb8(image_width, image_height);
     let black = Rgba::from_channels(0, 0, 0, 0);
 
     let fov = 90.0f32;
-    let width_dir_ratio = (fov / 2.0f32).tan();
-    let height_dir_ratio = (image_height as f32 / image_width as f32) * width_dir_ratio;
+    let tangent = (fov / 2.0f32).tan();
+    let aspect_ratio = (image_height as f32 / image_width as f32);
 
     for j in 0..image_height {
         for i in 0..image_width {
             let prim_ray_dir = Vector3::new(
-                i as f32 * width_dir_ratio / (image_width as f32) - width_dir_ratio / 2.0,
-                -(j as f32 * height_dir_ratio / (image_height as f32)) + height_dir_ratio / 2.0,
+                ((2.0 * i as f32 / image_width as f32) - 1.0) * tangent,
+                -((2.0 * j as f32 / image_width as f32) - aspect_ratio) * tangent,
                 -1.0).normalize();
 
-            let prim_ray = Ray::new(camera_pos, prim_ray_dir);
+            let prim_ray = Ray::new(scene.camera_pos, prim_ray_dir);
 
             let color = trace(&mut image, &scene, &prim_ray, 0);
             image.put_pixel(i, j, color);
@@ -171,18 +172,20 @@ fn render(scene: &Scene, image_width: u32, image_height: u32) -> DynamicImage {
 fn main() {
     let scene = Scene {
         spheres: vec![
-            Sphere::new(Point3::new(0.0, 0.0, -5.0),
+            Sphere::new(Point3::new(-1.0, -1.0, -5.0),
                         1.0,
                         Color::new(1.0, 0.0, 0.0),
-                        false),
-            Sphere::new(Point3::new(1.0, 1.0, -3.0),
+                        0.5,
+                        0.5),
+            Sphere::new(Point3::new(1.0, 1.0, -5.0),
                         1.0,
                         Color::new(0.0, 1.0, 0.0),
-                        true)
+                        0.5,
+                        0.5)
         ],
-        light_pos: Point3::new(0.0, 0.0, -10.0),
+        light_pos: Point3::new(0.0, 0.0, 5.0),
         camera_pos: Point3::new(0.0, 0.0, 0.0)
     };
-    let image = render(&scene, 640, 480);
+    let image = render(&scene, 1280, 720);
     image.save("result.png").unwrap();
 }
