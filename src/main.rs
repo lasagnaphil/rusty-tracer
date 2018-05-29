@@ -28,15 +28,6 @@ fn gamma_decode(encoded: f32) -> f32 {
     encoded.powf(GAMMA)
 }
 
-pub fn color_to_rgba(color: &Color) -> [u8; 4] {
-    [
-        (gamma_encode(color.x.min(1.0)) * 255.0) as u8,
-        (gamma_encode(color.y.min(1.0)) * 255.0) as u8,
-        (gamma_encode(color.z.min(1.0)) * 255.0) as u8,
-        255
-    ]
-}
-
 pub struct Ray {
     origin: Point3f,
     dir: Vector3f
@@ -188,7 +179,7 @@ fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
     }
 }
 
-fn render(pixels: &mut [u8], scene: &Scene, bounds: (u32, u32), upper_left: (u32, u32), lower_right: (u32, u32)) {
+fn render(pixels: &mut [f32], scene: &Scene, bounds: (u32, u32), upper_left: (u32, u32), lower_right: (u32, u32)) {
     let fov = 60.0f32;
     let tangent = (fov / 2.0f32).to_radians().tan();
     let aspect_ratio = bounds.1 as f32 / bounds.0 as f32;
@@ -205,13 +196,24 @@ fn render(pixels: &mut [u8], scene: &Scene, bounds: (u32, u32), upper_left: (u32
             let prim_ray = Ray::new(scene.camera_pos, prim_ray_dir);
 
             let color = trace(&scene, &prim_ray, 0);
-            let color = color_to_rgba(&color);
-            pixels[(4*(j * iter_width + i)) as usize] = color[0];
-            pixels[(4*(j * iter_width + i) + 1) as usize] = color[1];
-            pixels[(4*(j * iter_width + i) + 2) as usize] = color[2];
-            pixels[(4*(j * iter_width + i) + 3) as usize] = color[3];
+            pixels[(4*(j * iter_width + i)) as usize] = color.x;
+            pixels[(4*(j * iter_width + i) + 1) as usize] = color.y;
+            pixels[(4*(j * iter_width + i) + 2) as usize] = color.z;
+            pixels[(4*(j * iter_width + i) + 3) as usize] = 1.0;
         }
     }
+}
+
+fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
+    let max_value = pixels.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    pixels.iter().enumerate().map(|(i, v)| {
+        if i % 4 != 3 {
+            (gamma_encode(v / max_value) * 255.0) as u8
+        }
+        else {
+            255
+        }
+    }).collect()
 }
 
 fn main() {
@@ -304,11 +306,12 @@ fn main() {
 
     let image_width: u32 = 1920;
     let image_height: u32 = 1080;
-    let mut pixels = vec![0; (image_width * image_height * 4) as usize];
+    let mut pixels = vec![0.0; (image_width * image_height * 4) as usize];
+
+    let time = Local::now();
 
     if multithreading {
-        let time = Local::now();
-        let bands: Vec<(usize, &mut [u8])> = pixels
+        let bands: Vec<(usize, &mut [f32])> = pixels
             .chunks_mut((image_width * 4) as usize)
             .enumerate()
             .collect();
@@ -318,15 +321,15 @@ fn main() {
             let band_lower_right = (image_width, i as u32 + 1);
             render(band, &scene, (image_width, image_height), band_upper_left, band_lower_right);
         });
-
-        println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
     }
     else {
         let time = Local::now();
         render(&mut pixels, &scene, (image_width, image_height), (0, 0), (image_width, image_height));
-
-        println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
     }
 
-    image::save_buffer("result.png", &pixels, 1920, 1080, image::RGBA(8)).unwrap();
+    println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
+
+    let image_data = image_correction(pixels);
+
+    image::save_buffer("result.png", &image_data, 1920, 1080, image::RGBA(8)).unwrap();
 }
