@@ -2,21 +2,23 @@ extern crate cgmath;
 extern crate image;
 extern crate rayon;
 extern crate chrono;
+extern crate obj;
+
+mod shapes;
+use shapes::*;
 
 use std::f32;
 use std::fs::File;
+use obj::*;
 
 use cgmath::prelude::*;
 use cgmath::Point3;
+use cgmath::Vector2;
 use cgmath::Vector3;
 
 use rayon::prelude::*;
 
 use chrono::prelude::*;
-
-type Point3f = Point3<f32>;
-type Vector3f = Vector3<f32>;
-type Color = Vector3<f32>;
 
 const GAMMA: f32 = 2.2;
 
@@ -28,19 +30,10 @@ fn gamma_decode(encoded: f32) -> f32 {
     encoded.powf(GAMMA)
 }
 
-pub struct Ray {
-    origin: Point3f,
-    dir: Vector3f
-}
-
-impl Ray {
-    pub fn new(origin: Point3f, dir: Vector3f) -> Self {
-        Ray { origin: origin, dir: dir }
-    }
-}
+type Color = Vector3<f32>;
 
 #[derive(Clone)]
-pub struct Material {
+struct Material {
     surface_color: Color,
     reflectivity: f32,
     transparency: f32,
@@ -48,52 +41,24 @@ pub struct Material {
     emission_color: Color
 }
 
-#[derive(Clone)]
-pub struct Sphere {
-    origin: Point3f,
-    radius: f32,
-    mat_id: usize
-}
-
-impl Sphere {
-    fn intersect(self: &Self, ray: &Ray) -> Option<(f32, f32)> {
-        let disp = self.origin - ray.origin;
-        let ip = ray.dir.dot(disp);
-        if ip < 0.0 { return None; }
-        let discriminant = ip * ip - disp.magnitude2() + self.radius * self.radius;
-        if discriminant >= 0.0 {
-            Some((ip - discriminant.sqrt(), ip + discriminant.sqrt()))
-        }
-        else {
-            None
-        }
-    }
-}
-
-pub struct Vertex {
-    origin: Point3f,
-    radius: f32,
-    mat_id: usize
-}
-
-pub struct Scene {
+struct Scene {
     camera_pos: Point3f,
     spheres: Vec<Sphere>,
     materials: Vec<Material>
 }
 
 impl Scene {
-    pub fn add_material(self: &mut Self, material: Material) -> usize {
+    fn add_material(self: &mut Self, material: Material) -> usize {
         let id = self.materials.len();
         self.materials.push(material);
         id
     }
 
-    pub fn get_material(self: &Self, id: usize) -> &Material {
+    fn get_material(self: &Self, id: usize) -> &Material {
         &self.materials[id]
     }
 
-    pub fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
+    fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
         &mut self.materials[id]
     }
 }
