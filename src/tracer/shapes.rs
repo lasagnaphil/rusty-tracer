@@ -193,6 +193,17 @@ impl Model {
             mat_id
         )
     }
+    pub fn plane(mat_id: usize) -> Model {
+        Model::from_vertices(
+            vec![
+                Vertex::from_floats(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
+                Vertex::from_floats(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),
+                Vertex::from_floats(1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0),
+                Vertex::from_floats(0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0),
+            ],
+            mat_id
+        )
+    }
 }
 
 pub enum Shape {

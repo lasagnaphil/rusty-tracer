@@ -3,10 +3,10 @@ extern crate image;
 extern crate rayon;
 extern crate chrono;
 
-mod shapes;
-use shapes::*;
+mod tracer;
+use tracer::scene::*;
+use tracer::shapes::*;
 
-use std::f32;
 use std::fs::File;
 
 use cgmath::prelude::*;
@@ -28,169 +28,6 @@ fn gamma_decode(encoded: f32) -> f32 {
     encoded.powf(GAMMA)
 }
 
-type Color = Vector3<f32>;
-
-#[derive(Clone)]
-struct Material {
-    surface_color: Color,
-    reflectivity: f32,
-    transparency: f32,
-    refractive_index: f32,
-    emission_color: Color
-}
-
-struct Scene {
-    pub camera_pos: Point3f,
-    pub materials: Vec<Material>,
-    pub spheres: Vec<Sphere>,
-    pub models: Vec<Model>,
-}
-
-impl Scene {
-    fn get_material(self: &Self, id: usize) -> &Material {
-        &self.materials[id]
-    }
-
-    fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
-        &mut self.materials[id]
-    }
-
-    fn get_triangles(self: &Self) -> impl Iterator<Item = &Triangle> {
-        self.models.iter().flat_map(|m| &m.triangles)
-    }
-}
-
-fn reflect(dir: Vector3f, normal: Vector3f) -> Vector3f {
-    (dir - 2.0 * (dir.dot(normal)) * normal).normalize()
-}
-
-fn refract(dir: Vector3f, normal: Vector3f, n: f32) -> Vector3f {
-    let cos_theta_i = -dir.dot(normal);
-    let cos_theta_r = (1.0 - n*n*(1.0 - cos_theta_i*cos_theta_i)).sqrt() as f32;
-    ((n * cos_theta_i - cos_theta_r) * normal + n * dir).normalize()
-}
-
-const MAX_RAY_DEPTH: u32 = 5;
-
-fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
-    let mut closest_shape: Option<Shape> = None;
-    let mut tnear = f32::INFINITY;
-    let mut u = 0.0;
-    let mut v = 0.0;
-
-    // Find the nearest collision of ray with scene
-    for sphere in &scene.spheres {
-        if let Some(t) = sphere.intersect(&ray) {
-            if t < tnear {
-                tnear = t;
-                closest_shape = Some(Shape::Sphere(sphere.clone()));
-            }
-        }
-    }
-    for model in &scene.models {
-        for triangle in &model.triangles {
-            if let Some((t, tu, tv)) = triangle.intersect(&ray) {
-                if t < tnear {
-                    tnear = t; u = tu; v = tv;
-                    closest_shape = Some(Shape::Triangle(triangle.clone()));
-                }
-            }
-        }
-    }
-
-    let shape = if let Some(shape) = closest_shape {
-        shape
-    } else {
-        return Color::zero();
-    };
-
-    let mat = scene.get_material(shape.mat_id());
-    let hit_pos = ray.origin + tnear * ray.dir;
-    let hit_normal = match shape {
-        Shape::Sphere(sphere) => {
-            (hit_pos - sphere.origin).normalize()
-        },
-        Shape::Triangle(triangle) => {
-            let normal = u * triangle.vertices[0].normal
-                + v * triangle.vertices[1].normal
-                + (1.0 - u - v) * triangle.vertices[2].normal;
-            reflect(ray.dir, normal)
-        }
-    };
-    let incident_angle = -ray.dir.dot(hit_normal);
-    let hit_normal = if incident_angle > 0.0 { hit_normal } else { -hit_normal };
-    if (mat.transparency > 0.0 || mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
-        let n = if incident_angle > 0.0 {
-            1.0 / mat.refractive_index
-        } else {
-            mat.refractive_index
-        };
-        let r0 = ((n - 1.0) / (n + 1.0)).powi(2);
-        let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
-
-        let reflect_dir = reflect(ray.dir, hit_normal);
-        let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
-        let reflection_color = trace(scene, &reflection_ray, depth + 1);
-
-        let refraction_color = if mat.transparency > 0.0 {
-            let refract_dir = refract(ray.dir, hit_normal, n);
-            let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
-            trace(scene, &refraction_ray, depth + 1)
-        } else { Color::zero() };
-
-        mat.emission_color + mat.surface_color.mul_element_wise(
-            reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
-        )
-    } else {
-        let mut surface_color = Color::zero();
-        for light_sphere in &scene.spheres {
-            let light_mat = scene.get_material(light_sphere.mat_id);
-            if light_mat.emission_color != Color::zero() {
-                let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
-                let is_shadow = scene.spheres.iter().any(|other_sphere| {
-                    other_sphere.intersect(&shadow_ray).is_some()
-                });
-                let is_shadow = is_shadow || scene.get_triangles().any(|triangle| {
-                    triangle.intersect(&shadow_ray).is_some()
-                });
-                if !is_shadow {
-                    let shadow_angle = hit_normal.dot(shadow_ray.dir);
-                    if shadow_angle > 0.0 {
-                        surface_color += shadow_angle *
-                            mat.surface_color.mul_element_wise(light_mat.emission_color);
-                    }
-                };
-            }
-        }
-
-        mat.emission_color + surface_color
-    }
-}
-
-fn render(pixels: &mut [f32], scene: &Scene, bounds: (u32, u32), upper_left: (u32, u32), lower_right: (u32, u32)) {
-    let fov = 60.0f32;
-    let tangent = (fov / 2.0f32).to_radians().tan();
-    let aspect_ratio = bounds.1 as f32 / bounds.0 as f32;
-
-    let iter_width = lower_right.0 - upper_left.0;
-    let iter_height = lower_right.1 - upper_left.1;
-    for j in 0..iter_height {
-        for i in 0..iter_width {
-            let prim_ray_dir = Vector3::new(
-                ((2.0 * (upper_left.0 + i) as f32 / bounds.0 as f32) - 1.0) * tangent,
-                -((2.0 * (upper_left.1 + j) as f32 / bounds.0 as f32) - aspect_ratio) * tangent,
-                -1.0).normalize();
-
-            let prim_ray = Ray::new(scene.camera_pos, prim_ray_dir);
-
-            let color = trace(&scene, &prim_ray, 0);
-            pixels[(4*(j * iter_width + i)) as usize] = color.x;
-            pixels[(4*(j * iter_width + i) + 1) as usize] = color.y;
-            pixels[(4*(j * iter_width + i) + 2) as usize] = color.z;
-            pixels[(4*(j * iter_width + i) + 3) as usize] = 1.0;
-        }
-    }
-}
 
 fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
     let max_value = pixels.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -280,7 +117,7 @@ fn main() {
                 mat_id: 5
             }
         ],
-        camera_pos: Point3::new(1.2, 0.7, 7.0)
+        camera_pos: Point3::new(1.2, 0.7, 10.0)
     };
 
     let args: Vec<String> = std::env::args().collect();
@@ -317,12 +154,12 @@ fn main() {
         bands.into_par_iter().for_each(|(i, band)| {
             let band_upper_left = (0, i as u32);
             let band_lower_right = (image_width, i as u32 + 1);
-            render(band, &scene, (image_width, image_height), band_upper_left, band_lower_right);
+            scene.render(band, (image_width, image_height), band_upper_left, band_lower_right);
         });
     }
     else {
         let time = Local::now();
-        render(&mut pixels, &scene, (image_width, image_height), (0, 0), (image_width, image_height));
+        scene.render(&mut pixels, (image_width, image_height), (0, 0), (image_width, image_height));
     }
 
     println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
