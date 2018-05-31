@@ -46,39 +46,32 @@ fn main() {
     let scene = Scene {
         materials: vec![
             Material {
-                surface_color: Color::new(1.0, 0.32, 0.36),
+                surface_color: Color::new(0.9, 0.32, 0.36),
                 reflectivity: 1.0,
                 transparency: 0.5,
                 refractive_index: 1.1,
                 emission_color: Color::zero()
             },
             Material {
-                surface_color: Color::new(0.90, 0.76, 0.46),
+                surface_color: Color::new(0.2, 0.76, 0.1),
                 reflectivity: 1.0,
-                transparency: 0.5,
+                transparency: 0.8,
                 refractive_index: 1.1,
                 emission_color: Color::zero()
             },
             Material {
-                surface_color: Color::new(0.32, 0.36, 0.90),
+                surface_color: Color::new(0.9, 0.9, 0.2),
                 reflectivity: 1.0,
                 transparency: 0.5,
                 refractive_index: 1.1,
-                emission_color: Color::zero()
+                emission_color: Color::new(0.0, 0.0, 0.0)
             },
             Material {
-                surface_color: Color::new(1.0, 1.0, 0.3),
-                reflectivity: 0.0,
-                transparency: 0.0,
+                surface_color: Color::new(0.1, 0.2, 0.9),
+                reflectivity: 1.0,
+                transparency: 0.9,
                 refractive_index: 1.1,
-                emission_color: Color::new(1.0, 1.0, 0.3)
-            },
-            Material {
-                surface_color: Color::new(0.0, 0.0, 0.0),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(1.5, 1.5, 1.5)
+                emission_color: Color::new(0.0, 0.0, 0.0)
             },
             Material {
                 surface_color: Color::new(0.8, 0.8, 0.8),
@@ -86,6 +79,13 @@ fn main() {
                 transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
+            },
+            Material {
+                surface_color: Color::new(0.0, 0.0, 0.0),
+                reflectivity: 0.0,
+                transparency: 0.0,
+                refractive_index: 1.1,
+                emission_color: Color::new(1.0, 1.0, 1.0)
             }
         ],
         meshes: vec![
@@ -98,27 +98,47 @@ fn main() {
                 mat_id: 0
             },
             Sphere {
-                origin: Point3::new(2.0, -2.0, -6.0),
+                origin: Point3::new(3.0, -2.0, -3.0),
                 radius: 2.0,
                 mat_id: 1
             },
             Sphere {
-                origin: Point3::new(-4.0, -2.0, -8.0),
+                origin: Point3::new(2.0, -2.0, -6.0),
+                radius: 2.0,
+                mat_id: 2
+            },
+            Sphere {
+                origin: Point3::new(7.0, -2.0, -8.0),
                 radius: 2.0,
                 mat_id: 3
             },
             Sphere {
-                origin: Point3::new(0.0, 0.0, -10020.0),
+                origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
                 mat_id: 4
             },
             Sphere {
-                origin: Point3::new(0.0, -10004.0, 0.0),
+                origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
                 mat_id: 5
-            }
+            },
+            Sphere {
+                origin: Point3::new(0.0, 0.0, -10020.0),
+                radius: 10000.0,
+                mat_id: 5
+            },
         ],
-        camera_pos: Point3::new(1.2, 0.7, 10.0)
+        point_lights: vec![
+            PointLight {
+                pos: Point3f::new(-10000.0, 10000.0, 20000.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(0.0, 0.0, 10000.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+        ],
+        camera_pos: Point3::new(1.2, -0.5, 10.0)
     };
 
     let args: Vec<String> = std::env::args().collect();
@@ -140,9 +160,11 @@ fn main() {
         }
     };
 
+    /*
     let filename = "resources/teapot.obj";
     let scene = Scene::from_obj(filename);
     println!("Model {} successfully loaded.", filename);
+    */
 
     let image_width: u32 = 1920;
     let image_height: u32 = 1080;

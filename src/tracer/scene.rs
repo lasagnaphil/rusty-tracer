@@ -3,6 +3,7 @@ use super::shapes::*;
 
 use std::f32;
 use std::path::Path;
+use std::collections::HashMap;
 
 use cgmath::prelude::*;
 use cgmath::Point3;
@@ -20,15 +21,21 @@ pub struct Material {
     pub emission_color: Color
 }
 
+pub struct PointLight {
+    pub pos: Point3f,
+    pub emission_color: Color
+}
+
 pub struct Scene {
     pub camera_pos: Point3f,
     pub materials: Vec<Material>,
     pub spheres: Vec<Sphere>,
     pub meshes: Vec<Mesh>,
+    pub point_lights: Vec<PointLight>
 }
 
 impl Scene {
-    const MAX_RAY_DEPTH: u32 = 5;
+    const MAX_RAY_DEPTH: u32 = 10;
 
     pub fn from_obj(filename: &str) -> Self {
         let obj = tobj::load_obj(&Path::new(filename));
@@ -42,6 +49,11 @@ impl Scene {
 
             let has_normals = mesh.normals.len() > 0;
             let has_texcoords = mesh.texcoords.len() > 0;
+            let has_indices = mesh.indices.len() > 0;
+
+            println!("has_normals: {}", has_normals);
+            println!("has_texcoords: {}", has_texcoords);
+            println!("has_indices: {}", has_indices);
 
             for i in 0..num_vertices {
                 let position = Point3f::new(mesh.positions[3*i], mesh.positions[3*i+1], mesh.positions[3*i+2]);
@@ -58,7 +70,21 @@ impl Scene {
                 vertices.push(Vertex::new(position, normal, texcoords));
             }
 
-            if mesh.indices.len() > 0 {
+            if has_indices {
+                if !has_normals {
+                    for i in 0..(num_indices / 3) {
+                        let e1 = vertices[mesh.indices[3 * i + 1] as usize].pos - vertices[mesh.indices[3 * i] as usize].pos;
+                        let e2 = vertices[mesh.indices[3 * i + 2] as usize].pos - vertices[mesh.indices[3 * i] as usize].pos;
+                        let normal = e1.cross(e2).normalize();
+                        vertices[mesh.indices[3 * i] as usize].normal += normal;
+                        vertices[mesh.indices[3 * i + 1] as usize].normal += normal;
+                        vertices[mesh.indices[3 * i + 2] as usize].normal += normal;
+                    }
+                    for i in 0..num_vertices {
+                        vertices[i].normal = vertices[i].normal.normalize();
+                    }
+                }
+
                 vertices = mesh.indices.iter()
                     .map(|ind| vertices[*ind as usize].clone())
                     .collect();
@@ -73,21 +99,13 @@ impl Scene {
                 })
                 .collect();
 
-            if !has_normals {
-                for i in 0..(num_indices / 3) {
-                    let e1 = triangles[i].vertices[1].pos - triangles[i].vertices[0].pos;
-                    let e2 = triangles[i].vertices[2].pos - triangles[i].vertices[0].pos;
-                    triangles[i].vertices[0].normal = e2.cross(e1).normalize();
-                }
-            }
-
             Mesh { triangles, mat_id }
         }).collect();
 
         let materials = vec![
             Material {
-                surface_color: Color::new(0.8, 0.8, 0.8),
-                reflectivity: 0.7,
+                surface_color: Color::new(1.0, 0.3, 0.2),
+                reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
@@ -97,10 +115,10 @@ impl Scene {
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::new(1.5, 1.5, 1.5)
+                emission_color: Color::new(1.0, 1.0, 1.0)
             },
             Material {
-                surface_color: Color::new(0.8, 0.8, 0.8),
+                surface_color: Color::new(0.0, 0.0, 0.0),
                 reflectivity: 0.7,
                 transparency: 0.0,
                 refractive_index: 1.1,
@@ -112,23 +130,35 @@ impl Scene {
             meshes,
             materials,
             spheres: vec![
+                /*
                 Sphere {
-                    origin: Point3::new(0.0, 0.0, -10020.0),
+                    origin: Point3::new(0.0, 0.0, -11000.0),
                     radius: 10000.0,
                     mat_id: 1
                 },
                 Sphere {
-                    origin: Point3::new(0.0, 0.0, 10020.0),
+                    origin: Point3::new(0.0, 0.0, 11000.0),
                     radius: 10000.0,
                     mat_id: 1
                 },
                 Sphere {
-                    origin: Point3::new(0.0, -10004.0, 0.0),
+                    origin: Point3::new(0.0, -11000.0, 0.0),
                     radius: 10000.0,
                     mat_id: 2
                 }
+                */
             ],
-            camera_pos: Point3f::new(0.0, 1.0, 10.0)
+            camera_pos: Point3f::new(0.0, 1.0, 200.0),
+            point_lights: vec![
+                PointLight {
+                    pos: Point3f::new(0.0, 5.0, 1000.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                },
+                PointLight {
+                    pos: Point3f::new(0.0, 5.0, -1000.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                }
+            ],
         }
     }
 
@@ -215,10 +245,9 @@ impl Scene {
             )
         } else {
             let mut surface_color = Color::zero();
-            for light_sphere in &self.spheres {
-                let light_mat = self.get_material(light_sphere.mat_id);
-                if light_mat.emission_color != Color::zero() {
-                    let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
+            for point_light in &self.point_lights {
+                if point_light.emission_color != Color::zero() {
+                    let shadow_ray = Ray::new(hit_pos + hit_normal * 1e-4, (point_light.pos - hit_pos).normalize());
                     let is_shadow = self.spheres.iter().any(|other_sphere| {
                         other_sphere.intersect(&shadow_ray).is_some()
                     });
@@ -229,12 +258,11 @@ impl Scene {
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
                         if shadow_angle > 0.0 {
                             surface_color += shadow_angle *
-                                mat.surface_color.mul_element_wise(light_mat.emission_color);
+                                mat.surface_color.mul_element_wise(point_light.emission_color);
                         }
                     };
                 }
             }
-
             mat.emission_color + surface_color
         }
     }
