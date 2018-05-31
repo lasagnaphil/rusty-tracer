@@ -2,14 +2,12 @@ extern crate cgmath;
 extern crate image;
 extern crate rayon;
 extern crate chrono;
-extern crate obj;
 
 mod shapes;
 use shapes::*;
 
 use std::f32;
 use std::fs::File;
-use obj::*;
 
 use cgmath::prelude::*;
 use cgmath::Point3;
@@ -42,24 +40,23 @@ struct Material {
 }
 
 struct Scene {
-    camera_pos: Point3f,
-    spheres: Vec<Sphere>,
-    materials: Vec<Material>
+    pub camera_pos: Point3f,
+    pub materials: Vec<Material>,
+    pub spheres: Vec<Sphere>,
+    pub models: Vec<Model>,
 }
 
 impl Scene {
-    fn add_material(self: &mut Self, material: Material) -> usize {
-        let id = self.materials.len();
-        self.materials.push(material);
-        id
-    }
-
     fn get_material(self: &Self, id: usize) -> &Material {
         &self.materials[id]
     }
 
     fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
         &mut self.materials[id]
+    }
+
+    fn get_triangles(self: &Self) -> impl Iterator<Item = &Triangle> {
+        self.models.iter().flat_map(|m| &m.triangles)
     }
 }
 
@@ -76,71 +73,97 @@ fn refract(dir: Vector3f, normal: Vector3f, n: f32) -> Vector3f {
 const MAX_RAY_DEPTH: u32 = 5;
 
 fn trace(scene: &Scene, ray: &Ray, depth: u32) -> Color {
-
-    let mut closest_sphere: Option<Sphere> = None;
+    let mut closest_shape: Option<Shape> = None;
     let mut tnear = f32::INFINITY;
+    let mut u = 0.0;
+    let mut v = 0.0;
 
+    // Find the nearest collision of ray with scene
     for sphere in &scene.spheres {
-        if let Some((tnear_hit, tfar_hit)) = sphere.intersect(&ray) {
-            let t = if tnear_hit < 0.0 { tfar_hit } else { tnear_hit };
+        if let Some(t) = sphere.intersect(&ray) {
             if t < tnear {
                 tnear = t;
-                closest_sphere = Some(sphere.clone());
+                closest_shape = Some(Shape::Sphere(sphere.clone()));
             }
         }
     }
-
-    if let Some(sphere) = closest_sphere {
-        let mat = scene.get_material(sphere.mat_id);
-        let hit_pos = ray.origin + tnear * ray.dir;
-        let hit_normal = (hit_pos - sphere.origin).normalize();
-        let incident_angle = -ray.dir.dot(hit_normal);
-        let hit_normal = if incident_angle > 0.0 { hit_normal } else { -hit_normal };
-        if (mat.transparency > 0.0 || mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
-            let n = if incident_angle > 0.0 {
-                1.0 / mat.refractive_index
-            } else {
-                mat.refractive_index
-            };
-            let r0 = ((n - 1.0) / (n + 1.0)).powi(2);
-            let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
-
-            let reflect_dir = reflect(ray.dir, hit_normal);
-            let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
-            let reflection_color = trace(scene, &reflection_ray, depth + 1);
-
-            let refraction_color = if mat.transparency > 0.0 {
-                let refract_dir = refract(ray.dir, hit_normal, n);
-                let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
-                trace(scene, &refraction_ray, depth + 1)
-            } else { Color::zero() };
-
-            mat.emission_color + mat.surface_color.mul_element_wise(
-                reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
-            )
-        } else {
-            let mut surface_color = Color::zero();
-            for light_sphere in &scene.spheres {
-                let light_mat = scene.get_material(light_sphere.mat_id);
-                if light_mat.emission_color != Color::zero() {
-                    let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
-                    let is_shadow = scene.spheres.iter().any(|other_sphere| {
-                        other_sphere.intersect(&shadow_ray).is_some()
-                    });
-                    if !is_shadow {
-                        let shadow_angle = hit_normal.dot(shadow_ray.dir);
-                        if shadow_angle > 0.0 {
-                            surface_color += shadow_angle *
-                                mat.surface_color.mul_element_wise(light_mat.emission_color);
-                        }
-                    };
+    for model in &scene.models {
+        for triangle in &model.triangles {
+            if let Some((t, tu, tv)) = triangle.intersect(&ray) {
+                if t < tnear {
+                    tnear = t; u = tu; v = tv;
+                    closest_shape = Some(Shape::Triangle(triangle.clone()));
                 }
             }
-            mat.emission_color + surface_color
         }
     }
-    else {
-        Vector3f::zero()
+
+    let shape = if let Some(shape) = closest_shape {
+        shape
+    } else {
+        return Color::zero();
+    };
+
+    let mat = scene.get_material(shape.mat_id());
+    let hit_pos = ray.origin + tnear * ray.dir;
+    let hit_normal = match shape {
+        Shape::Sphere(sphere) => {
+            (hit_pos - sphere.origin).normalize()
+        },
+        Shape::Triangle(triangle) => {
+            let normal = u * triangle.vertices[0].normal
+                + v * triangle.vertices[1].normal
+                + (1.0 - u - v) * triangle.vertices[2].normal;
+            reflect(ray.dir, normal)
+        }
+    };
+    let incident_angle = -ray.dir.dot(hit_normal);
+    let hit_normal = if incident_angle > 0.0 { hit_normal } else { -hit_normal };
+    if (mat.transparency > 0.0 || mat.reflectivity > 0.0) && depth < MAX_RAY_DEPTH {
+        let n = if incident_angle > 0.0 {
+            1.0 / mat.refractive_index
+        } else {
+            mat.refractive_index
+        };
+        let r0 = ((n - 1.0) / (n + 1.0)).powi(2);
+        let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
+
+        let reflect_dir = reflect(ray.dir, hit_normal);
+        let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
+        let reflection_color = trace(scene, &reflection_ray, depth + 1);
+
+        let refraction_color = if mat.transparency > 0.0 {
+            let refract_dir = refract(ray.dir, hit_normal, n);
+            let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
+            trace(scene, &refraction_ray, depth + 1)
+        } else { Color::zero() };
+
+        mat.emission_color + mat.surface_color.mul_element_wise(
+            reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
+        )
+    } else {
+        let mut surface_color = Color::zero();
+        for light_sphere in &scene.spheres {
+            let light_mat = scene.get_material(light_sphere.mat_id);
+            if light_mat.emission_color != Color::zero() {
+                let shadow_ray = Ray::new(hit_pos, (light_sphere.origin - hit_pos).normalize());
+                let is_shadow = scene.spheres.iter().any(|other_sphere| {
+                    other_sphere.intersect(&shadow_ray).is_some()
+                });
+                let is_shadow = is_shadow || scene.get_triangles().any(|triangle| {
+                    triangle.intersect(&shadow_ray).is_some()
+                });
+                if !is_shadow {
+                    let shadow_angle = hit_normal.dot(shadow_ray.dir);
+                    if shadow_angle > 0.0 {
+                        surface_color += shadow_angle *
+                            mat.surface_color.mul_element_wise(light_mat.emission_color);
+                    }
+                };
+            }
+        }
+
+        mat.emission_color + surface_color
     }
 }
 
@@ -199,18 +222,25 @@ fn main() {
                 emission_color: Color::zero()
             },
             Material {
+                surface_color: Color::new(0.32, 0.36, 0.90),
+                reflectivity: 1.0,
+                transparency: 0.5,
+                refractive_index: 1.1,
+                emission_color: Color::zero()
+            },
+            Material {
                 surface_color: Color::new(1.0, 1.0, 0.3),
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::new(3.0, 3.0, 0.9)
+                emission_color: Color::new(1.0, 1.0, 0.3)
             },
             Material {
                 surface_color: Color::new(0.0, 0.0, 0.0),
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::new(0.5, 0.5, 0.5)
+                emission_color: Color::new(1.5, 1.5, 1.5)
             },
             Material {
                 surface_color: Color::new(0.8, 0.8, 0.8),
@@ -219,6 +249,9 @@ fn main() {
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
             }
+        ],
+        models: vec![
+            Model::cube(2)
         ],
         spheres: vec![
             Sphere {
@@ -234,20 +267,20 @@ fn main() {
             Sphere {
                 origin: Point3::new(-4.0, -2.0, -8.0),
                 radius: 2.0,
-                mat_id: 2
+                mat_id: 3
             },
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
-                mat_id: 3
+                mat_id: 4
             },
             Sphere {
                 origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
-                mat_id: 4
+                mat_id: 5
             }
         ],
-        camera_pos: Point3::new(0.0, 0.0, 10.0)
+        camera_pos: Point3::new(1.2, 0.7, 7.0)
     };
 
     let args: Vec<String> = std::env::args().collect();
