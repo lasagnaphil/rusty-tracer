@@ -64,13 +64,13 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    fn empty() -> Vertex {
+    pub fn empty() -> Vertex {
         Vertex::from_floats(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     }
-    fn new(pos: Point3f, normal: Vector3f, tex: Point2f) -> Vertex {
+    pub fn new(pos: Point3f, normal: Vector3f, tex: Point2f) -> Vertex {
         Vertex { pos, normal, tex }
     }
-    fn from_floats(x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> Vertex {
+    pub fn from_floats(x: f32, y: f32, z: f32, nx: f32, ny: f32, nz: f32, u: f32, v: f32) -> Vertex {
         Vertex { pos: Point3f::new(x, y, z), normal: Vector3f::new(nx, ny, nz), tex: Point2f::new(u, v) }
     }
 }
@@ -136,22 +136,22 @@ impl Traceable for Triangle {
     }
 }
 
-pub struct Model {
+pub struct Mesh {
     pub triangles: Vec<Triangle>,
     pub mat_id: usize
 }
 
-impl Model {
+impl Mesh {
     pub fn from_vertices(vertices: Vec<Vertex>, mat_id: usize) -> Self {
         let triangles: Vec<Triangle> = vertices
             .chunks(3)
             .map(|c| Triangle::from_vertices(c, mat_id))
             .collect();
-        Model { triangles, mat_id }
+        Mesh { triangles, mat_id }
     }
 
-    pub fn cube(mat_id: usize) -> Model {
-        Model::from_vertices(
+    pub fn cube(mat_id: usize) -> Mesh {
+        Mesh::from_vertices(
             vec![
                 Vertex::from_floats(-0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 0.0),
                 Vertex::from_floats(0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 0.0),
@@ -193,8 +193,8 @@ impl Model {
             mat_id
         )
     }
-    pub fn plane(mat_id: usize) -> Model {
-        Model::from_vertices(
+    pub fn plane(mat_id: usize) -> Mesh {
+        Mesh::from_vertices(
             vec![
                 Vertex::from_floats(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
                 Vertex::from_floats(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),

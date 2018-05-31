@@ -2,6 +2,8 @@ extern crate cgmath;
 extern crate image;
 extern crate rayon;
 extern crate chrono;
+extern crate tobj;
+#[macro_use] extern crate itertools;
 
 mod tracer;
 use tracer::scene::*;
@@ -27,7 +29,6 @@ fn gamma_encode(linear: f32) -> f32 {
 fn gamma_decode(encoded: f32) -> f32 {
     encoded.powf(GAMMA)
 }
-
 
 fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
     let max_value = pixels.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
@@ -87,8 +88,8 @@ fn main() {
                 emission_color: Color::new(0.0, 0.0, 0.0)
             }
         ],
-        models: vec![
-            Model::cube(2)
+        meshes: vec![
+            Mesh::cube(2)
         ],
         spheres: vec![
             Sphere {
@@ -139,6 +140,10 @@ fn main() {
         }
     };
 
+    let filename = "resources/teapot.obj";
+    let scene = Scene::from_obj(filename);
+    println!("Model {} successfully loaded.", filename);
+
     let image_width: u32 = 1920;
     let image_height: u32 = 1080;
     let mut pixels = vec![0.0; (image_width * image_height * 4) as usize];
@@ -146,6 +151,7 @@ fn main() {
     let time = Local::now();
 
     if multithreading {
+        println!("Starting ray tracer with multiple threads.");
         let bands: Vec<(usize, &mut [f32])> = pixels
             .chunks_mut((image_width * 4) as usize)
             .enumerate()
@@ -158,13 +164,19 @@ fn main() {
         });
     }
     else {
+        println!("Starting ray tracer with single thread.");
         let time = Local::now();
         scene.render(&mut pixels, (image_width, image_height), (0, 0), (image_width, image_height));
     }
 
+    println!("Ray tracing complete!");
     println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
 
+    println!("Performing postprocessing.");
     let image_data = image_correction(pixels);
 
+    println!("Saving image.");
     image::save_buffer("result.png", &image_data, 1920, 1080, image::RGBA(8)).unwrap();
+
+    println!("Rendered image saved at result.png");
 }
