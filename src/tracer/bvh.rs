@@ -1,20 +1,21 @@
 use super::shapes::*;
 use super::scene::*;
 
-struct BVH {
-    bounding_volumes: Vec<BoundingVolume>
+use cgmath::prelude::*;
+
+pub struct BVH {
+    pub bounding_volumes: Vec<BoundingVolume>
 }
 
 impl BVH {
-    pub fn new(meshes: &[Mesh]) -> Self {
-        let bounding_volumes: Vec<BoundingVolume> = meshes.iter()
-            .map(|m| m.get_bounding_volume())
+    pub fn new(scene: &Scene) -> Self {
+        let bounding_volumes: Vec<BoundingVolume> = scene.meshes.iter()
+            .map(|m| BoundingVolume::from_mesh(m))
             .collect();
         BVH { bounding_volumes }
     }
 
-    fn intersect(ray: &Ray) -> Color {
-
+    fn intersect(ray: &Ray, scene: &Scene) {
     }
 }
 

@@ -6,12 +6,15 @@ extern crate tobj;
 #[macro_use] extern crate itertools;
 extern crate pbr;
 #[macro_use] extern crate lazy_static;
+extern crate rand;
+
 extern crate clap;
 
 mod tracer;
 use tracer::scene::*;
 use tracer::shapes::*;
 use tracer::loader::*;
+use tracer::bvh::*;
 
 use std::fs::File;
 use std::sync::{Arc, Mutex};
@@ -52,6 +55,7 @@ fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
 }
 
 use clap::{Arg, App};
+use rand::prelude::*;
 
 fn main() {
     let mut scene = Scene {
@@ -128,21 +132,20 @@ fn main() {
                 radius: 10000.0,
                 mat_id: 4
             },
-            */
-            /*
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
                 mat_id: 5
             },
             Sphere {
-                origin: Point3::new(0.0, 0.0, -10020.0),
+                origin: Point3::new(0.0, 0.0, 10020.0),
                 radius: 10000.0,
                 mat_id: 5
             },
             */
         ],
         point_lights: vec![
+            /*
             PointLight {
                 pos: Point3f::new(10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
@@ -151,7 +154,7 @@ fn main() {
                 pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            /*
+            */
             PointLight {
                 pos: Point3f::new(0.0, 0.0, 1000.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
@@ -176,9 +179,9 @@ fn main() {
                 pos: Point3f::new(0.0, -1000.0, 0.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            */
         ],
-        camera_pos: Point3::new(0.0, 2.0, 10.0)
+        camera_pos: Point3::new(0.0, 2.0, 15.0),
+        bvh: None
     };
 
     let matches = App::new("rusty-tracer")
@@ -187,6 +190,8 @@ fn main() {
         .about("A ray tracer written in rust")
         .arg(Arg::with_name("single-thread")
             .short("s").long("single-thread"))
+        .arg(Arg::with_name("bvh")
+            .short("b").long("bvh"))
         .arg(Arg::with_name("INPUT").index(1))
         .get_matches();
 
@@ -194,20 +199,41 @@ fn main() {
         Some(filename) => {
             let mut obj_meshes = obj_to_meshes(filename);
             println!("Model {} successfully loaded.", filename);
-            for mesh in obj_meshes {
+            for mut mesh in obj_meshes {
+                let transform = Matrix4f::from_angle_x(cgmath::Deg(20.0));
+                mesh.transform(transform);
                 scene.add_mesh(mesh);
             }
         }
         None => {}
     }
-    let multithreading = !matches.is_present("single-thread");
 
-    let mut cube_mesh = Mesh::cube(2);
-    let transform = Matrix4f::from_angle_y(cgmath::Deg(30.0));
-    let transform = transform * Matrix4f::from_angle_z(cgmath::Deg(30.0));
-    let transform = transform * Matrix4f::from_translation(Vector3::new(0.5, -1.0, 0.0));
-    cube_mesh.transform(transform);
-    // scene.add_mesh(cube_mesh);
+    let multithreading = !matches.is_present("single-thread");
+    let use_bvh = matches.is_present("bvh");
+
+    let mut rng: rand::XorShiftRng = rand::SeedableRng::from_seed(
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    for i in 0..100 {
+        let x = rng.gen_range(-10.0, 10.0);
+        let y = rng.gen_range(-10.0, 10.0);
+        let z = rng.gen_range(-10.0, 10.0);
+        let rot_x = rng.gen_range(0.0, 180.0);
+        let rot_y = rng.gen_range(0.0, 180.0);
+        let rot_z = rng.gen_range(0.0, 180.0);
+        let mut cube_mesh = Mesh::cube(0);
+        let transform = Matrix4f::from_angle_y(cgmath::Deg(rot_x));
+        let transform = transform * Matrix4f::from_angle_y(cgmath::Deg(rot_y));
+        let transform = transform * Matrix4f::from_angle_z(cgmath::Deg(rot_z));
+        let transform = transform * Matrix4f::from_translation(Vector3::new(x, y, z));
+        cube_mesh.transform(transform);
+        scene.add_mesh(cube_mesh);
+    }
+
+    if use_bvh {
+        println!("Building BVH.");
+        scene.build_bvh();
+        println!("BVH building complete.");
+    }
 
     let image_width: u32 = 1280;
     let image_height: u32 = 720;

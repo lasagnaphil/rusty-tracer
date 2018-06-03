@@ -1,5 +1,7 @@
 extern crate cgmath;
 
+use super::bvh::*;
+
 use std::mem;
 use std::f32;
 
@@ -124,6 +126,7 @@ impl Intersectable for Triangle {
     }
 }
 
+#[derive(Clone)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub mat_id: usize
@@ -201,30 +204,13 @@ impl Mesh {
             transform_fn(vertex);
         }
     }
-
-    pub fn get_bounding_volume(self: &Self) -> BoundingVolume {
-        let mut ranges = [(0.0, 0.0); NUM_PLANE_NORMALS];
-        for i in 0..NUM_PLANE_NORMALS {
-            let plane_normal = PLANE_NORMALS[i];
-            for vertex in &self.vertices {
-                let dist = plane_normal.dot(vertex.pos - Point3f::origin());
-                if dist < ranges[i].0 { ranges[i].0 = dist; }
-                if dist > ranges[i].1 { ranges[i].1 = dist; }
-            }
-        }
-        BoundingVolume { ranges }
-    }
 }
 
-pub enum Shape {
-    Sphere(Sphere),
-    Triangle(Triangle),
-}
 
-const NUM_PLANE_NORMALS: usize = 9;
+pub const NUM_PLANE_NORMALS: usize = 9;
 
 lazy_static! {
-    static ref PLANE_NORMALS: [Vector3f; NUM_PLANE_NORMALS] = [
+    pub static ref PLANE_NORMALS: [Vector3f; NUM_PLANE_NORMALS] = [
         Vector3f::new(1.0, 0.0, 0.0),
         Vector3f::new(0.0, 1.0, 0.0),
         Vector3f::new(0.0, 0.0, 1.0),
@@ -237,18 +223,26 @@ lazy_static! {
     ];
 }
 
-struct BoundingVolume {
-    ranges: [(f32, f32); NUM_PLANE_NORMALS]
+pub struct BoundingVolume {
+    pub ranges: [(f32, f32); NUM_PLANE_NORMALS],
+    pub mesh: Mesh
 }
 
 impl BoundingVolume {
-    pub fn new() -> Self {
-        BoundingVolume { ranges: [(-f32::INFINITY, f32::INFINITY); NUM_PLANE_NORMALS] }
+    pub fn from_mesh(mesh: &Mesh) -> Self {
+        let mut ranges = [(f32::INFINITY, -f32::INFINITY); NUM_PLANE_NORMALS];
+        for i in 0..NUM_PLANE_NORMALS {
+            let plane_normal = PLANE_NORMALS[i];
+            for vertex in &mesh.vertices {
+                let dist = plane_normal.dot(vertex.pos - Point3f::origin());
+                if dist < ranges[i].0 { ranges[i].0 = dist; }
+                if dist > ranges[i].1 { ranges[i].1 = dist; }
+            }
+        }
+        BoundingVolume { ranges, mesh: mesh.clone() }
     }
-}
 
-impl BoundingVolume {
-    fn intersect(self: &Self, ray: &Ray, normal_orig_angles: &[f32], normal_dir_angles: &[f32])
+    pub fn intersect(self: &Self, ray: &Ray, normal_orig_angles: &[f32], normal_dir_angles: &[f32])
         -> Option<(f32, f32, usize)> {
         let mut tnear_final = -f32::INFINITY;
         let mut tfar_final = f32::INFINITY;
@@ -256,16 +250,36 @@ impl BoundingVolume {
         for (i, range) in self.ranges.iter().enumerate() {
             let tnear = (range.1 - normal_orig_angles[i]) / normal_dir_angles[i];
             let tfar = (range.0 - normal_orig_angles[i]) / normal_dir_angles[i];
-            let (tnear, tfar) = if normal_dir_angles[0] < 0.0 { (tnear, tfar) } else { (tfar, tnear) };
-            if tnear < tnear_final {
-                tnear_final  = tnear;
+            let (tnear, tfar) = if normal_dir_angles[i] < 0.0 { (tnear, tfar) } else { (tfar, tnear) };
+            if tnear > tnear_final {
+                tnear_final = tnear;
                 imin = i;
             }
-            if tfar > tfar_final {
+            if tfar < tfar_final {
                 tfar_final = tfar;
             }
-            if tnear > tfar { return None; }
+            if tnear_final > tfar_final { return None; }
         }
-        if imin == NUM_PLANE_NORMALS { Some((tnear_final, tfar_final, imin)) } else { None }
+        if imin < NUM_PLANE_NORMALS {
+            Some((tnear_final, tfar_final, imin))
+                /*
+            if tnear_final > 0.0 {
+                Some((tnear_final, tfar_final, imin))
+            }
+            else if tfar_final > 0.0 {
+                Some((0.0, tfar_final, imin))
+            }
+            else {
+                None
+            }
+            */
+        } else { None }
     }
 }
+
+pub enum Shape {
+    Sphere(Sphere),
+    Triangle(Triangle),
+    BoundingVolume(usize)
+}
+

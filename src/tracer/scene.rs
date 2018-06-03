@@ -1,6 +1,8 @@
 use tobj;
 use super::shapes::*;
+use super::bvh::*;
 
+use std;
 use std::f32;
 use std::collections::HashMap;
 
@@ -28,11 +30,20 @@ pub struct Scene {
     pub materials: Vec<Material>,
     pub spheres: Vec<Sphere>,
     pub meshes: Vec<Mesh>,
-    pub point_lights: Vec<PointLight>
+    pub point_lights: Vec<PointLight>,
+    pub bvh: Option<BVH>
 }
+
+const BIAS: f32 = 1e-4;
 
 impl Scene {
     const MAX_RAY_DEPTH: u32 = 5;
+
+    pub fn new(materials: Vec<Material>, spheres: Vec<Sphere>, meshes: Vec<Mesh>,
+               point_lights: Vec<PointLight>, camera_pos: Point3f) -> Self {
+        Scene { materials, spheres, meshes, point_lights, camera_pos, bvh: None }
+    }
+
 
     pub fn add_mesh(self: &mut Self, mesh: Mesh) {
         self.meshes.push(mesh);
@@ -55,9 +66,12 @@ impl Scene {
             }).collect()
     }
 
-    fn trace(self: &Self, ray: &Ray, depth: u32) -> Color {
-        const BIAS: f32 = 1e-4;
+    pub fn build_bvh(self: &mut Self) {
+        let bvh = BVH::new(self);
+        self.bvh = Some(bvh);
+    }
 
+    fn trace(self: &Self, ray: &Ray, depth: u32) -> Color {
         let mut closest_shape: Option<Shape> = None;
         let mut tnear = f32::INFINITY;
         let mut u = 0.0;
@@ -67,35 +81,85 @@ impl Scene {
         // Find the nearest collision of ray with scene
         for sphere in &self.spheres {
             if let Some(t) = sphere.intersect(&ray) {
-                if t < (tnear - 1e-4) {
+                if t < (tnear - BIAS) {
                     tnear = t;
                     closest_shape = Some(Shape::Sphere(sphere.clone()));
                     mat_id = sphere.mat_id;
                 }
             }
         }
-        for mesh in &self.meshes {
-            for i in 0..(mesh.vertices.len()/3) {
-                let triangle = Triangle::from_vertices(&mesh.vertices[3*i..3*i+3]);
-                if let Some((t, tu, tv)) = triangle.intersect(&ray) {
-                    if t < (tnear - 1e-4) {
-                        tnear = t; u = tu; v = tv;
-                        closest_shape = Some(Shape::Triangle(triangle));
-                        mat_id = mesh.mat_id;
+
+        if let Some(bvh) = self.bvh.as_ref() {
+            let mut normal_orig_angles = [0.0; NUM_PLANE_NORMALS];
+            let mut normal_dir_angles = [0.0; NUM_PLANE_NORMALS];
+            for i in 0..NUM_PLANE_NORMALS {
+                normal_orig_angles[i] = PLANE_NORMALS[i].dot(ray.origin - Point3f::origin());
+                normal_dir_angles[i] = PLANE_NORMALS[i].dot(ray.dir);
+                // scene.meshes
+            }
+
+            for (i, bounding_volume) in bvh.bounding_volumes.iter().enumerate() {
+                if let Some((tn, tf, plane_i)) = bounding_volume.intersect(
+                    ray, &normal_orig_angles, &normal_dir_angles) {
+                    if tn < (tnear - BIAS) {
+                        tnear = tn;
+                        closest_shape = Some(Shape::BoundingVolume(i));
+                        mat_id = bounding_volume.mesh.mat_id;
+                    }
+                }
+            }
+
+            if let Some(Shape::BoundingVolume(bv_index)) = closest_shape {
+                tnear = f32::INFINITY;
+                let mesh = &bvh.bounding_volumes[bv_index].mesh;
+                for i in 0..(mesh.vertices.len() / 3) {
+                    let triangle = Triangle::from_vertices(&mesh.vertices[3 * i..3 * i + 3]);
+                    if let Some((t, tu, tv)) = triangle.intersect(&ray) {
+                        if t < (tnear - BIAS) {
+                            tnear = t;
+                            u = tu;
+                            v = tv;
+                            closest_shape = Some(Shape::Triangle(triangle));
+                            mat_id = mesh.mat_id;
+                        }
+                    }
+                }
+                // TODO:
+                // Right now this is an ugly hack
+                // It doesn't catch some edge cases, so there will be more shadow rays
+                // This will be solved when using BV tree instead of BV list
+                if let Some(Shape::Triangle(_)) = closest_shape {} else { return Color::zero(); }
+            }
+        }
+        else {
+            for mesh in &self.meshes {
+                for i in 0..(mesh.vertices.len() / 3) {
+                    let triangle = Triangle::from_vertices(&mesh.vertices[3 * i..3 * i + 3]);
+                    if let Some((t, tu, tv)) = triangle.intersect(&ray) {
+                        if t < (tnear - BIAS) {
+                            tnear = t;
+                            u = tu;
+                            v = tv;
+                            closest_shape = Some(Shape::Triangle(triangle));
+                            mat_id = mesh.mat_id;
+                        }
                     }
                 }
             }
         }
 
-        let shape = if let Some(shape) = closest_shape {
-            shape
+        if let Some(shape) = closest_shape {
+            self.trace_shape(shape, mat_id, tnear, u, v, ray, depth)
         } else {
-            return Color::zero();
-        };
+            Color::zero()
+        }
+    }
 
+    fn trace_shape(self: &Self, closest_shape: Shape,
+                   mat_id: usize, tnear: f32, u: f32, v: f32, ray: &Ray, depth: u32) -> Color {
         let mat = self.get_material(mat_id);
         let hit_pos = ray.origin + tnear * ray.dir;
-        let hit_normal = match shape {
+        let hit_normal = match closest_shape {
             Shape::Sphere(sphere) => {
                 (hit_pos - sphere.origin).normalize()
             },
@@ -104,6 +168,10 @@ impl Scene {
                     + u * triangle.vertices[1].normal
                     + v * triangle.vertices[2].normal;
                 reflect(ray.dir, normal)
+            },
+            Shape::BoundingVolume(bounding_volume) => {
+                eprintln!("Unreachable code pos!");
+                std::process::exit(2);
             }
         };
         let incident_angle = -ray.dir.dot(hit_normal);
