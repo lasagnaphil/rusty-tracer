@@ -48,7 +48,7 @@ impl Traceable for Sphere {
         if discriminant >= 0.0 {
             let tnear = ip - discriminant.sqrt();
             let tfar = ip + discriminant.sqrt();
-            if tnear < 0.0 { Some(tfar) } else { Some(tnear) }
+            if tnear > 1e-4 { Some(tnear) } else { Some(tfar) }
         }
         else {
             None

@@ -35,7 +35,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    const MAX_RAY_DEPTH: u32 = 10;
+    const MAX_RAY_DEPTH: u32 = 5;
 
     pub fn from_obj(filename: &str) -> Self {
         let obj = tobj::load_obj(&Path::new(filename));
@@ -93,9 +93,7 @@ impl Scene {
             let mut triangles: Vec<Triangle> = vertices
                 .chunks(3)
                 .map(|t| {
-                    let mut vertices = [Vertex::empty(), Vertex::empty(), Vertex::empty()];
-                    vertices.clone_from_slice(t);
-                    Triangle { vertices, mat_id }
+                    Triangle { vertices: [t[0].clone(), t[1].clone(), t[2].clone()], mat_id }
                 })
                 .collect();
 
@@ -105,8 +103,8 @@ impl Scene {
         let materials = vec![
             Material {
                 surface_color: Color::new(1.0, 0.3, 0.2),
-                reflectivity: 0.0,
-                transparency: 0.0,
+                reflectivity: 1.0,
+                transparency: 0.5,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
             },
@@ -130,7 +128,6 @@ impl Scene {
             meshes,
             materials,
             spheres: vec![
-                /*
                 Sphere {
                     origin: Point3::new(0.0, 0.0, -11000.0),
                     radius: 10000.0,
@@ -146,16 +143,15 @@ impl Scene {
                     radius: 10000.0,
                     mat_id: 2
                 }
-                */
             ],
-            camera_pos: Point3f::new(0.0, 1.0, 200.0),
+            camera_pos: Point3f::new(0.0, 1.0, 10.0),
             point_lights: vec![
                 PointLight {
-                    pos: Point3f::new(0.0, 5.0, 1000.0),
+                    pos: Point3f::new(500.0, 500.0, 1000.0),
                     emission_color: Color::new(1.0, 1.0, 1.0)
                 },
                 PointLight {
-                    pos: Point3f::new(0.0, 5.0, -1000.0),
+                    pos: Point3f::new(-500.0, 500.0, 1000.0),
                     emission_color: Color::new(1.0, 1.0, 1.0)
                 }
             ],
@@ -175,6 +171,8 @@ impl Scene {
     }
 
     fn trace(self: &Self, ray: &Ray, depth: u32) -> Color {
+        const BIAS: f32 = 1e-4;
+
         let mut closest_shape: Option<Shape> = None;
         let mut tnear = f32::INFINITY;
         let mut u = 0.0;
@@ -183,7 +181,7 @@ impl Scene {
         // Find the nearest collision of ray with scene
         for sphere in &self.spheres {
             if let Some(t) = sphere.intersect(&ray) {
-                if t < tnear {
+                if t < (tnear - 1e-4) {
                     tnear = t;
                     closest_shape = Some(Shape::Sphere(sphere.clone()));
                 }
@@ -192,7 +190,7 @@ impl Scene {
         for mesh in &self.meshes {
             for triangle in &mesh.triangles {
                 if let Some((t, tu, tv)) = triangle.intersect(&ray) {
-                    if t < tnear {
+                    if t < (tnear - 1e-4) {
                         tnear = t; u = tu; v = tv;
                         closest_shape = Some(Shape::Triangle(triangle.clone()));
                     }
@@ -213,9 +211,9 @@ impl Scene {
                 (hit_pos - sphere.origin).normalize()
             },
             Shape::Triangle(triangle) => {
-                let normal = u * triangle.vertices[0].normal
-                    + v * triangle.vertices[1].normal
-                    + (1.0 - u - v) * triangle.vertices[2].normal;
+                let normal = (1.0 - u - v) * triangle.vertices[0].normal
+                    + u * triangle.vertices[1].normal
+                    + v * triangle.vertices[2].normal;
                 reflect(ray.dir, normal)
             }
         };
@@ -231,12 +229,12 @@ impl Scene {
             let fresnel = r0 + (1.0 - r0) * (1.0 - incident_angle.abs()).powi(5);
 
             let reflect_dir = reflect(ray.dir, hit_normal);
-            let reflection_ray = Ray::new(hit_pos + hit_normal * 1e-4, reflect_dir);
+            let reflection_ray = Ray::new(hit_pos + hit_normal * BIAS, reflect_dir);
             let reflection_color = self.trace(&reflection_ray, depth + 1);
 
             let refraction_color = if mat.transparency > 0.0 {
                 let refract_dir = refract(ray.dir, hit_normal, n);
-                let refraction_ray = Ray::new(hit_pos - hit_normal * 1e-4, refract_dir);
+                let refraction_ray = Ray::new(hit_pos - hit_normal * BIAS, refract_dir);
                 self.trace(&refraction_ray, depth + 1)
             } else { Color::zero() };
 
@@ -247,7 +245,7 @@ impl Scene {
             let mut surface_color = Color::zero();
             for point_light in &self.point_lights {
                 if point_light.emission_color != Color::zero() {
-                    let shadow_ray = Ray::new(hit_pos + hit_normal * 1e-4, (point_light.pos - hit_pos).normalize());
+                    let shadow_ray = Ray::new(hit_pos + hit_normal * BIAS, (point_light.pos - hit_pos).normalize());
                     let is_shadow = self.spheres.iter().any(|other_sphere| {
                         other_sphere.intersect(&shadow_ray).is_some()
                     });
@@ -270,15 +268,15 @@ impl Scene {
     pub fn render(self: &Self, pixels: &mut [f32], bounds: (u32, u32), upper_left: (u32, u32), lower_right: (u32, u32)) {
         let fov = 60.0f32;
         let tangent = (fov / 2.0f32).to_radians().tan();
-        let aspect_ratio = bounds.1 as f32 / bounds.0 as f32;
+        let aspect_ratio = (bounds.1-1) as f32 / (bounds.0-1) as f32;
 
         let iter_width = lower_right.0 - upper_left.0;
         let iter_height = lower_right.1 - upper_left.1;
         for j in 0..iter_height {
             for i in 0..iter_width {
                 let prim_ray_dir = Vector3::new(
-                    ((2.0 * (upper_left.0 + i) as f32 / bounds.0 as f32) - 1.0) * tangent,
-                    -((2.0 * (upper_left.1 + j) as f32 / bounds.0 as f32) - aspect_ratio) * tangent,
+                    ((2.0 * (upper_left.0 + i) as f32 / (bounds.0 - 1) as f32) - 1.0) * tangent,
+                    -((2.0 * (upper_left.1 + j) as f32 / (bounds.0 - 1) as f32) - aspect_ratio) * tangent,
                     -1.0).normalize();
 
                 let prim_ray = Ray::new(self.camera_pos, prim_ray_dir);

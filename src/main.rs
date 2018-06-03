@@ -31,7 +31,9 @@ fn gamma_decode(encoded: f32) -> f32 {
 }
 
 fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
-    let max_value = pixels.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+    let max_value = pixels.iter().max_by(|a, b| {
+        a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
+    }).unwrap();
     pixels.iter().enumerate().map(|(i, v)| {
         if i % 4 != 3 {
             (gamma_encode(v / max_value) * 255.0) as u8
@@ -160,11 +162,9 @@ fn main() {
         }
     };
 
-    /*
     let filename = "resources/teapot.obj";
     let scene = Scene::from_obj(filename);
     println!("Model {} successfully loaded.", filename);
-    */
 
     let image_width: u32 = 1920;
     let image_height: u32 = 1080;
