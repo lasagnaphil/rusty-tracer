@@ -53,15 +53,15 @@ fn main() {
         materials: vec![
             Material {
                 surface_color: Color::new(0.9, 0.32, 0.36),
-                reflectivity: 1.0,
-                transparency: 0.5,
+                reflectivity: 0.0,
+                transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.2, 0.76, 0.1),
                 reflectivity: 1.0,
-                transparency: 0.8,
+                transparency: 0.5,
                 refractive_index: 1.1,
                 emission_color: Color::zero()
             },
@@ -74,14 +74,14 @@ fn main() {
             },
             Material {
                 surface_color: Color::new(0.1, 0.2, 0.9),
-                reflectivity: 1.0,
-                transparency: 0.9,
+                reflectivity: 0.0,
+                transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
             },
             Material {
                 surface_color: Color::new(0.8, 0.8, 0.8),
-                reflectivity: 0.7,
+                reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
@@ -123,6 +123,7 @@ fn main() {
                 radius: 10000.0,
                 mat_id: 4
             },
+            /*
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
@@ -133,14 +134,17 @@ fn main() {
                 radius: 10000.0,
                 mat_id: 5
             },
+            */
         ],
         point_lights: vec![
+            /*
             PointLight {
-                pos: Point3f::new(-10000.0, 10000.0, 20000.0),
+                pos: Point3f::new(-10000.0, 10000.0, 10000.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            */
             PointLight {
-                pos: Point3f::new(0.0, 0.0, 10000.0),
+                pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
         ],
@@ -148,13 +152,13 @@ fn main() {
     };
 
     let args: Vec<String> = std::env::args().collect();
-    let multithreading = match args.len() {
-        1 => {
-            true
-        }
+    let (multithreading, filename) = match args.len() {
         2 => {
+            (true, args[1].clone())
+        }
+        3 => {
             if args[1] == "--single-thread" {
-                false
+                (false, args[2].clone())
             } else {
                 eprintln!("Invalid argument!");
                 std::process::exit(1);
@@ -166,9 +170,10 @@ fn main() {
         }
     };
 
-    let filename = "resources/teapot.obj";
-    let scene = Scene::from_obj(filename);
+    /*
+    let scene = Scene::from_obj(&filename, 200.0);
     println!("Model {} successfully loaded.", filename);
+    */
 
     let image_width: u32 = 1280;
     let image_height: u32 = 720;

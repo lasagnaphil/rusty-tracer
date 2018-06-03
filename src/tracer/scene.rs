@@ -37,7 +37,7 @@ pub struct Scene {
 impl Scene {
     const MAX_RAY_DEPTH: u32 = 5;
 
-    pub fn from_obj(filename: &str) -> Self {
+    pub fn from_obj(filename: &str, view_dist: f32) -> Self {
         let obj = tobj::load_obj(&Path::new(filename));
         let (models, materials) = obj.unwrap();
         let meshes: Vec<Mesh> = models.iter().map(|model| {
@@ -103,8 +103,8 @@ impl Scene {
         let materials = vec![
             Material {
                 surface_color: Color::new(1.0, 0.3, 0.2),
-                reflectivity: 1.0,
-                transparency: 0.5,
+                reflectivity: 0.0,
+                transparency: 0.0,
                 refractive_index: 1.1,
                 emission_color: Color::new(0.0, 0.0, 0.0)
             },
@@ -128,6 +128,7 @@ impl Scene {
             meshes,
             materials,
             spheres: vec![
+                /*
                 Sphere {
                     origin: Point3::new(0.0, 0.0, -11000.0),
                     radius: 10000.0,
@@ -143,17 +144,34 @@ impl Scene {
                     radius: 10000.0,
                     mat_id: 2
                 }
+                */
             ],
-            camera_pos: Point3f::new(0.0, 1.5, 10.0),
+            camera_pos: Point3f::new(0.0, 1.5, view_dist),
             point_lights: vec![
                 PointLight {
-                    pos: Point3f::new(500.0, 500.0, 1000.0),
+                    pos: Point3f::new(0.0, 0.0, 1000.0),
                     emission_color: Color::new(1.0, 1.0, 1.0)
                 },
                 PointLight {
-                    pos: Point3f::new(-500.0, 500.0, 1000.0),
+                    pos: Point3f::new(0.0, 0.0, -1000.0),
                     emission_color: Color::new(1.0, 1.0, 1.0)
-                }
+                },
+                PointLight {
+                    pos: Point3f::new(1000.0, 0.0, 0.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                },
+                PointLight {
+                    pos: Point3f::new(-1000.0, 0.0, 0.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                },
+                PointLight {
+                    pos: Point3f::new(0.0, 1000.0, 0.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                },
+                PointLight {
+                    pos: Point3f::new(0.0, -1000.0, 0.0),
+                    emission_color: Color::new(1.0, 1.0, 1.0)
+                },
             ],
         }
     }
