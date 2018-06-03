@@ -144,7 +144,7 @@ impl Scene {
                     mat_id: 2
                 }
             ],
-            camera_pos: Point3f::new(0.0, 1.0, 10.0),
+            camera_pos: Point3f::new(0.0, 1.5, 10.0),
             point_lights: vec![
                 PointLight {
                     pos: Point3f::new(500.0, 500.0, 1000.0),

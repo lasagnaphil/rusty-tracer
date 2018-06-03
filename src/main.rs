@@ -4,12 +4,14 @@ extern crate rayon;
 extern crate chrono;
 extern crate tobj;
 #[macro_use] extern crate itertools;
+extern crate pbr;
 
 mod tracer;
 use tracer::scene::*;
 use tracer::shapes::*;
 
 use std::fs::File;
+use std::sync::{Arc, Mutex};
 
 use cgmath::prelude::*;
 use cgmath::Point3;
@@ -19,6 +21,8 @@ use cgmath::Vector3;
 use rayon::prelude::*;
 
 use chrono::prelude::*;
+
+use pbr::ProgressBar;
 
 const GAMMA: f32 = 2.2;
 
@@ -166,11 +170,12 @@ fn main() {
     let scene = Scene::from_obj(filename);
     println!("Model {} successfully loaded.", filename);
 
-    let image_width: u32 = 1920;
-    let image_height: u32 = 1080;
+    let image_width: u32 = 1280;
+    let image_height: u32 = 720;
     let mut pixels = vec![0.0; (image_width * image_height * 4) as usize];
 
     let time = Local::now();
+
 
     if multithreading {
         println!("Starting ray tracer with multiple threads.");
@@ -179,26 +184,35 @@ fn main() {
             .enumerate()
             .collect();
 
+        let mut pb = Arc::new(Mutex::new(ProgressBar::new(bands.len() as u64)));
+        pb.lock().unwrap().format("╢▌▌░╟");
+
         bands.into_par_iter().for_each(|(i, band)| {
+            let pb = pb.clone();
+            pb.lock().unwrap().inc();
             let band_upper_left = (0, i as u32);
             let band_lower_right = (image_width, i as u32 + 1);
             scene.render(band, (image_width, image_height), band_upper_left, band_lower_right);
         });
+
+        println!("Ray tracing complete!")
     }
     else {
         println!("Starting ray tracer with single thread.");
+
         let time = Local::now();
         scene.render(&mut pixels, (image_width, image_height), (0, 0), (image_width, image_height));
+
+        println!("Ray tracing complete!")
     }
 
-    println!("Ray tracing complete!");
     println!("Elapsed time: {}ms", Local::now().signed_duration_since(time).num_milliseconds());
 
     println!("Performing postprocessing.");
     let image_data = image_correction(pixels);
 
     println!("Saving image.");
-    image::save_buffer("result.png", &image_data, 1920, 1080, image::RGBA(8)).unwrap();
+    image::save_buffer("result.png", &image_data, image_width, image_height, image::RGBA(8)).unwrap();
 
     println!("Rendered image saved at result.png");
 }
