@@ -1,6 +1,7 @@
 extern crate cgmath;
 
 use std::mem;
+use std::f32;
 
 use cgmath::prelude::*;
 use cgmath::Point2;
@@ -14,6 +15,7 @@ pub type Point3f = Point3<f32>;
 pub type Vector2f = Vector2<f32>;
 pub type Vector3f = Vector3<f32>;
 pub type Matrix4f = Matrix4<f32>;
+pub type Color = Vector3<f32>;
 
 pub struct Ray {
     pub origin: Point3f,
@@ -26,7 +28,7 @@ impl Ray {
     }
 }
 
-pub trait Traceable {
+pub trait Intersectable {
     type IntersectResult;
     fn intersect(self: &Self, ray: &Ray) -> Option<Self::IntersectResult>;
 }
@@ -38,7 +40,7 @@ pub struct Sphere {
     pub mat_id: usize
 }
 
-impl Traceable for Sphere {
+impl Intersectable for Sphere {
     type IntersectResult = f32;
     fn intersect(self: &Self, ray: &Ray) -> Option<f32> {
         let disp = self.origin - ray.origin;
@@ -78,20 +80,14 @@ impl Vertex {
 #[derive(Clone)]
 pub struct Triangle {
     pub vertices: [Vertex; 3],
-    pub mat_id: usize
 }
 
 impl Triangle {
-    pub fn from_vertices(vertices: &[Vertex], mat_id: usize) -> Self {
-        unsafe {
-            let mut triangle_vertices: [Vertex; 3] = mem::uninitialized();
-            triangle_vertices.clone_from_slice(vertices);
-            Triangle { vertices: triangle_vertices, mat_id }
-        }
+    pub fn from_vertices(vertices: &[Vertex]) -> Self {
+        Triangle { vertices: [vertices[0].clone(), vertices[1].clone(), vertices[2].clone()] }
     }
 
-    pub fn normal_of_pos(self: &Self, pos: Point3f) -> Vector3f {
-        let e0 = self.vertices[1].pos - self.vertices[0].pos;
+    pub fn normal_of_pos(self: &Self, pos: Point3f) -> Vector3f { let e0 = self.vertices[1].pos - self.vertices[0].pos;
         let e1 = self.vertices[2].pos - self.vertices[1].pos;
         let e2 = self.vertices[0].pos - self.vertices[2].pos;
         let a = e0.cross(pos - self.vertices[1].pos).magnitude();
@@ -100,19 +96,11 @@ impl Triangle {
         (a * self.vertices[0].normal + b * self.vertices[0].normal + c * self.vertices[0].normal) / (a + b + c)
     }
 
-    pub fn transform(self: Self, transform: Matrix4f) -> Self {
-        let mut vertices = self.vertices;
-        for v in &mut vertices {
-            v.pos = transform.transform_point(v.pos);
-            v.normal = transform.transform_vector(v.normal);
-        }
-        Triangle {
-            vertices, mat_id: self.mat_id
-        }
-    }
+
+
 }
 
-impl Traceable for Triangle {
+impl Intersectable for Triangle {
     type IntersectResult = (f32, f32, f32);
     // Using Moller-Trumbore intersection algorithm
     // Note: Quite dirty!
@@ -137,17 +125,13 @@ impl Traceable for Triangle {
 }
 
 pub struct Mesh {
-    pub triangles: Vec<Triangle>,
+    pub vertices: Vec<Vertex>,
     pub mat_id: usize
 }
 
 impl Mesh {
     pub fn from_vertices(vertices: Vec<Vertex>, mat_id: usize) -> Self {
-        let triangles: Vec<Triangle> = vertices
-            .chunks(3)
-            .map(|c| Triangle::from_vertices(c, mat_id))
-            .collect();
-        Mesh { triangles, mat_id }
+        Mesh { vertices, mat_id }
     }
 
     pub fn cube(mat_id: usize) -> Mesh {
@@ -204,6 +188,32 @@ impl Mesh {
             mat_id
         )
     }
+
+    pub fn transform(self: &mut Self, transform: Matrix4f) {
+        for v in &mut self.vertices {
+            v.pos = transform.transform_point(v.pos);
+            v.normal = transform.transform_vector(v.normal);
+        }
+    }
+
+    pub fn transform_with(self: &mut Self, transform_fn: fn(&mut Vertex) -> ()) {
+        for vertex in &mut self.vertices {
+            transform_fn(vertex);
+        }
+    }
+
+    pub fn get_bounding_volume(self: &Self) -> BoundingVolume {
+        let mut ranges = [(0.0, 0.0); NUM_PLANE_NORMALS];
+        for i in 0..NUM_PLANE_NORMALS {
+            let plane_normal = PLANE_NORMALS[i];
+            for vertex in &self.vertices {
+                let dist = plane_normal.dot(vertex.pos - Point3f::origin());
+                if dist < ranges[i].0 { ranges[i].0 = dist; }
+                if dist > ranges[i].1 { ranges[i].1 = dist; }
+            }
+        }
+        BoundingVolume { ranges }
+    }
 }
 
 pub enum Shape {
@@ -211,11 +221,51 @@ pub enum Shape {
     Triangle(Triangle),
 }
 
-impl Shape {
-    pub fn mat_id(self: &Self) -> usize {
-        match self {
-            Shape::Sphere(sphere) => sphere.mat_id,
-            Shape::Triangle(triangle) => triangle.mat_id
+const NUM_PLANE_NORMALS: usize = 9;
+
+lazy_static! {
+    static ref PLANE_NORMALS: [Vector3f; NUM_PLANE_NORMALS] = [
+        Vector3f::new(1.0, 0.0, 0.0),
+        Vector3f::new(0.0, 1.0, 0.0),
+        Vector3f::new(0.0, 0.0, 1.0),
+        Vector3f::new(1.0, 1.0, 0.0).normalize(),
+        Vector3f::new(1.0, 0.0, 1.0).normalize(),
+        Vector3f::new(0.0, 1.0, 1.0).normalize(),
+        Vector3f::new(1.0, -1.0, 0.0).normalize(),
+        Vector3f::new(1.0, 0.0, -1.0).normalize(),
+        Vector3f::new(0.0, 1.0, -1.0).normalize(),
+    ];
+}
+
+struct BoundingVolume {
+    ranges: [(f32, f32); NUM_PLANE_NORMALS]
+}
+
+impl BoundingVolume {
+    pub fn new() -> Self {
+        BoundingVolume { ranges: [(-f32::INFINITY, f32::INFINITY); NUM_PLANE_NORMALS] }
+    }
+}
+
+impl BoundingVolume {
+    fn intersect(self: &Self, ray: &Ray, normal_orig_angles: &[f32], normal_dir_angles: &[f32])
+        -> Option<(f32, f32, usize)> {
+        let mut tnear_final = -f32::INFINITY;
+        let mut tfar_final = f32::INFINITY;
+        let mut imin = NUM_PLANE_NORMALS;
+        for (i, range) in self.ranges.iter().enumerate() {
+            let tnear = (range.1 - normal_orig_angles[i]) / normal_dir_angles[i];
+            let tfar = (range.0 - normal_orig_angles[i]) / normal_dir_angles[i];
+            let (tnear, tfar) = if normal_dir_angles[0] < 0.0 { (tnear, tfar) } else { (tfar, tnear) };
+            if tnear < tnear_final {
+                tnear_final  = tnear;
+                imin = i;
+            }
+            if tfar > tfar_final {
+                tfar_final = tfar;
+            }
+            if tnear > tfar { return None; }
         }
+        if imin == NUM_PLANE_NORMALS { Some((tnear_final, tfar_final, imin)) } else { None }
     }
 }

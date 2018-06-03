@@ -2,15 +2,12 @@ use tobj;
 use super::shapes::*;
 
 use std::f32;
-use std::path::Path;
 use std::collections::HashMap;
 
 use cgmath::prelude::*;
 use cgmath::Point3;
 use cgmath::Vector2;
 use cgmath::Vector3;
-
-pub type Color = Vector3<f32>;
 
 #[derive(Clone)]
 pub struct Material {
@@ -37,143 +34,8 @@ pub struct Scene {
 impl Scene {
     const MAX_RAY_DEPTH: u32 = 5;
 
-    pub fn from_obj(filename: &str, view_dist: f32) -> Self {
-        let obj = tobj::load_obj(&Path::new(filename));
-        let (models, materials) = obj.unwrap();
-        let meshes: Vec<Mesh> = models.iter().map(|model| {
-            let mesh = &model.mesh;
-            let mat_id = mesh.material_id.unwrap_or(0);
-            let num_vertices = mesh.positions.len() / 3;
-            let num_indices = mesh.indices.len();
-            let mut vertices: Vec<Vertex> = vec![];
-
-            let has_normals = mesh.normals.len() > 0;
-            let has_texcoords = mesh.texcoords.len() > 0;
-            let has_indices = mesh.indices.len() > 0;
-
-            println!("has_normals: {}", has_normals);
-            println!("has_texcoords: {}", has_texcoords);
-            println!("has_indices: {}", has_indices);
-
-            for i in 0..num_vertices {
-                let position = Point3f::new(mesh.positions[3*i], mesh.positions[3*i+1], mesh.positions[3*i+2]);
-                let normal = if has_normals {
-                    Vector3f::new(mesh.normals[3*i], mesh.normals[3*i+1], mesh.normals[3*i+2])
-                } else {
-                    Vector3f::zero()
-                };
-                let texcoords = if has_texcoords {
-                    Point2f::new(mesh.texcoords[2*i], mesh.texcoords[2*i+1])
-                } else {
-                    Point2f::new(0.0, 0.0)
-                };
-                vertices.push(Vertex::new(position, normal, texcoords));
-            }
-
-            if has_indices {
-                if !has_normals {
-                    for i in 0..(num_indices / 3) {
-                        let e1 = vertices[mesh.indices[3 * i + 1] as usize].pos - vertices[mesh.indices[3 * i] as usize].pos;
-                        let e2 = vertices[mesh.indices[3 * i + 2] as usize].pos - vertices[mesh.indices[3 * i] as usize].pos;
-                        let normal = e1.cross(e2).normalize();
-                        vertices[mesh.indices[3 * i] as usize].normal += normal;
-                        vertices[mesh.indices[3 * i + 1] as usize].normal += normal;
-                        vertices[mesh.indices[3 * i + 2] as usize].normal += normal;
-                    }
-                    for i in 0..num_vertices {
-                        vertices[i].normal = vertices[i].normal.normalize();
-                    }
-                }
-
-                vertices = mesh.indices.iter()
-                    .map(|ind| vertices[*ind as usize].clone())
-                    .collect();
-            }
-
-            let mut triangles: Vec<Triangle> = vertices
-                .chunks(3)
-                .map(|t| {
-                    Triangle { vertices: [t[0].clone(), t[1].clone(), t[2].clone()], mat_id }
-                })
-                .collect();
-
-            Mesh { triangles, mat_id }
-        }).collect();
-
-        let materials = vec![
-            Material {
-                surface_color: Color::new(1.0, 0.3, 0.2),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(0.0, 0.0, 0.0)
-            },
-            Material {
-                surface_color: Color::new(0.0, 0.0, 0.0),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(1.0, 1.0, 1.0)
-            },
-            Material {
-                surface_color: Color::new(0.0, 0.0, 0.0),
-                reflectivity: 0.7,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(0.5, 0.5, 0.5)
-            }
-        ];
-
-        Scene {
-            meshes,
-            materials,
-            spheres: vec![
-                /*
-                Sphere {
-                    origin: Point3::new(0.0, 0.0, -11000.0),
-                    radius: 10000.0,
-                    mat_id: 1
-                },
-                Sphere {
-                    origin: Point3::new(0.0, 0.0, 11000.0),
-                    radius: 10000.0,
-                    mat_id: 1
-                },
-                Sphere {
-                    origin: Point3::new(0.0, -11000.0, 0.0),
-                    radius: 10000.0,
-                    mat_id: 2
-                }
-                */
-            ],
-            camera_pos: Point3f::new(0.0, 1.5, view_dist),
-            point_lights: vec![
-                PointLight {
-                    pos: Point3f::new(0.0, 0.0, 1000.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-                PointLight {
-                    pos: Point3f::new(0.0, 0.0, -1000.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-                PointLight {
-                    pos: Point3f::new(1000.0, 0.0, 0.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-                PointLight {
-                    pos: Point3f::new(-1000.0, 0.0, 0.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-                PointLight {
-                    pos: Point3f::new(0.0, 1000.0, 0.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-                PointLight {
-                    pos: Point3f::new(0.0, -1000.0, 0.0),
-                    emission_color: Color::new(1.0, 1.0, 1.0)
-                },
-            ],
-        }
+    pub fn add_mesh(self: &mut Self, mesh: Mesh) {
+        self.meshes.push(mesh);
     }
 
     fn get_material(self: &Self, id: usize) -> &Material {
@@ -184,8 +46,13 @@ impl Scene {
         &mut self.materials[id]
     }
 
-    fn get_triangles(self: &Self) -> impl Iterator<Item = &Triangle> {
-        self.meshes.iter().flat_map(|m| &m.triangles)
+    fn get_triangles<'a>(self: &'a Self) -> Vec<Triangle> {
+        self.meshes.iter()
+            .flat_map(|m| {
+                m.vertices
+                    .chunks(3)
+                    .map(|c| Triangle::from_vertices(c))
+            }).collect()
     }
 
     fn trace(self: &Self, ray: &Ray, depth: u32) -> Color {
@@ -195,6 +62,7 @@ impl Scene {
         let mut tnear = f32::INFINITY;
         let mut u = 0.0;
         let mut v = 0.0;
+        let mut mat_id = 0;
 
         // Find the nearest collision of ray with scene
         for sphere in &self.spheres {
@@ -202,15 +70,18 @@ impl Scene {
                 if t < (tnear - 1e-4) {
                     tnear = t;
                     closest_shape = Some(Shape::Sphere(sphere.clone()));
+                    mat_id = sphere.mat_id;
                 }
             }
         }
         for mesh in &self.meshes {
-            for triangle in &mesh.triangles {
+            for i in 0..(mesh.vertices.len()/3) {
+                let triangle = Triangle::from_vertices(&mesh.vertices[3*i..3*i+3]);
                 if let Some((t, tu, tv)) = triangle.intersect(&ray) {
                     if t < (tnear - 1e-4) {
                         tnear = t; u = tu; v = tv;
-                        closest_shape = Some(Shape::Triangle(triangle.clone()));
+                        closest_shape = Some(Shape::Triangle(triangle));
+                        mat_id = mesh.mat_id;
                     }
                 }
             }
@@ -222,7 +93,7 @@ impl Scene {
             return Color::zero();
         };
 
-        let mat = self.get_material(shape.mat_id());
+        let mat = self.get_material(mat_id);
         let hit_pos = ray.origin + tnear * ray.dir;
         let hit_normal = match shape {
             Shape::Sphere(sphere) => {
@@ -264,12 +135,20 @@ impl Scene {
             for point_light in &self.point_lights {
                 if point_light.emission_color != Color::zero() {
                     let shadow_ray = Ray::new(hit_pos + hit_normal * BIAS, (point_light.pos - hit_pos).normalize());
-                    let is_shadow = self.spheres.iter().any(|other_sphere| {
-                        other_sphere.intersect(&shadow_ray).is_some()
-                    });
-                    let is_shadow = is_shadow || self.get_triangles().any(|triangle| {
-                        triangle.intersect(&shadow_ray).is_some()
-                    });
+                    let mut is_shadow = false;
+                    for other_sphere in &self.spheres {
+                        if other_sphere.intersect(&shadow_ray).is_some() {
+                            is_shadow = true; break;
+                        }
+                    }
+                    for mesh in &self.meshes {
+                        for i in 0..(mesh.vertices.len()/3) {
+                            let triangle = Triangle::from_vertices(&mesh.vertices[3*i..3*i+3]);
+                            if triangle.intersect(&shadow_ray).is_some() {
+                                is_shadow = true; break;
+                            }
+                        }
+                    }
                     if !is_shadow {
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
                         if shadow_angle > 0.0 {

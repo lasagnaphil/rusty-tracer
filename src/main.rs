@@ -5,10 +5,13 @@ extern crate chrono;
 extern crate tobj;
 #[macro_use] extern crate itertools;
 extern crate pbr;
+#[macro_use] extern crate lazy_static;
+extern crate clap;
 
 mod tracer;
 use tracer::scene::*;
 use tracer::shapes::*;
+use tracer::loader::*;
 
 use std::fs::File;
 use std::sync::{Arc, Mutex};
@@ -48,8 +51,10 @@ fn image_correction(pixels: Vec<f32>) -> Vec<u8> {
     }).collect()
 }
 
+use clap::{Arg, App};
+
 fn main() {
-    let scene = Scene {
+    let mut scene = Scene {
         materials: vec![
             Material {
                 surface_color: Color::new(0.9, 0.32, 0.36),
@@ -95,9 +100,9 @@ fn main() {
             }
         ],
         meshes: vec![
-            Mesh::cube(2)
         ],
         spheres: vec![
+            /*
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
@@ -123,6 +128,7 @@ fn main() {
                 radius: 10000.0,
                 mat_id: 4
             },
+            */
             /*
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
@@ -137,50 +143,77 @@ fn main() {
             */
         ],
         point_lights: vec![
-            /*
             PointLight {
-                pos: Point3f::new(-10000.0, 10000.0, 10000.0),
+                pos: Point3f::new(10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            */
             PointLight {
                 pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            /*
+            PointLight {
+                pos: Point3f::new(0.0, 0.0, 1000.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(0.0, 0.0, -1000.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(1000.0, 0.0, 0.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(-1000.0, 0.0, 0.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(0.0, 1000.0, 0.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            PointLight {
+                pos: Point3f::new(0.0, -1000.0, 0.0),
+                emission_color: Color::new(1.0, 1.0, 1.0)
+            },
+            */
         ],
-        camera_pos: Point3::new(1.2, -0.5, 10.0)
+        camera_pos: Point3::new(0.0, 2.0, 10.0)
     };
 
-    let args: Vec<String> = std::env::args().collect();
-    let (multithreading, filename) = match args.len() {
-        2 => {
-            (true, args[1].clone())
-        }
-        3 => {
-            if args[1] == "--single-thread" {
-                (false, args[2].clone())
-            } else {
-                eprintln!("Invalid argument!");
-                std::process::exit(1);
+    let matches = App::new("rusty-tracer")
+        .version("1.0")
+        .author("Philsik Chang <lasagnaphil@snu.ac.kr>")
+        .about("A ray tracer written in rust")
+        .arg(Arg::with_name("single-thread")
+            .short("s").long("single-thread"))
+        .arg(Arg::with_name("INPUT").index(1))
+        .get_matches();
+
+    match matches.value_of("INPUT") {
+        Some(filename) => {
+            let mut obj_meshes = obj_to_meshes(filename);
+            println!("Model {} successfully loaded.", filename);
+            for mesh in obj_meshes {
+                scene.add_mesh(mesh);
             }
         }
-        _ => {
-            eprintln!("Invalid argument!");
-            std::process::exit(1);
-        }
-    };
+        None => {}
+    }
+    let multithreading = !matches.is_present("single-thread");
 
-    /*
-    let scene = Scene::from_obj(&filename, 200.0);
-    println!("Model {} successfully loaded.", filename);
-    */
+    let mut cube_mesh = Mesh::cube(2);
+    let transform = Matrix4f::from_angle_y(cgmath::Deg(30.0));
+    let transform = transform * Matrix4f::from_angle_z(cgmath::Deg(30.0));
+    let transform = transform * Matrix4f::from_translation(Vector3::new(0.5, -1.0, 0.0));
+    cube_mesh.transform(transform);
+    // scene.add_mesh(cube_mesh);
 
     let image_width: u32 = 1280;
     let image_height: u32 = 720;
     let mut pixels = vec![0.0; (image_width * image_height * 4) as usize];
 
     let time = Local::now();
-
 
     if multithreading {
         println!("Starting ray tracer with multiple threads.");
