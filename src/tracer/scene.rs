@@ -17,7 +17,8 @@ pub struct Material {
     pub reflectivity: f32,
     pub transparency: f32,
     pub refractive_index: f32,
-    pub emission_color: Color
+    pub specular_color: Color,
+    pub shininess: f32
 }
 
 pub struct PointLight {
@@ -195,7 +196,7 @@ impl Scene {
                 self.trace(&refraction_ray, depth + 1)
             } else { Color::zero() };
 
-            mat.emission_color + mat.surface_color.mul_element_wise(
+            mat.surface_color.mul_element_wise(
                 reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
             )
         } else {
@@ -219,14 +220,15 @@ impl Scene {
                     }
                     if !is_shadow {
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
-                        if shadow_angle > 0.0 {
-                            surface_color += shadow_angle *
-                                mat.surface_color.mul_element_wise(point_light.emission_color);
-                        }
+                        surface_color += shadow_angle.max(0.0) *
+                            mat.surface_color.mul_element_wise(point_light.emission_color);
+                        let specular_angle = -ray.dir.dot(shadow_ray.dir);
+                        surface_color += specular_angle.max(0.0).powf(mat.shininess) *
+                            mat.specular_color.mul_element_wise(point_light.emission_color);
                     };
                 }
             }
-            mat.emission_color + surface_color
+            surface_color
         }
     }
 

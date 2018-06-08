@@ -65,48 +65,45 @@ fn main() {
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::zero()
+                shininess: 64.0,
+                specular_color: Color::new(1.0, 1.0, 1.0)
             },
             Material {
                 surface_color: Color::new(0.2, 0.76, 0.1),
                 reflectivity: 1.0,
                 transparency: 0.5,
                 refractive_index: 1.1,
-                emission_color: Color::zero()
+                shininess: 0.0,
+                specular_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.9, 0.9, 0.2),
                 reflectivity: 1.0,
                 transparency: 0.5,
                 refractive_index: 1.1,
-                emission_color: Color::new(0.0, 0.0, 0.0)
+                shininess: 0.0,
+                specular_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.1, 0.2, 0.9),
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::new(0.0, 0.0, 0.0)
+                shininess: 32.0,
+                specular_color: Color::new(0.5, 0.5, 0.5)
             },
             Material {
                 surface_color: Color::new(0.8, 0.8, 0.8),
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.1,
-                emission_color: Color::new(0.0, 0.0, 0.0)
+                shininess: 0.0,
+                specular_color: Color::zero()
             },
-            Material {
-                surface_color: Color::new(0.0, 0.0, 0.0),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                emission_color: Color::new(1.0, 1.0, 1.0)
-            }
         ],
         meshes: vec![
         ],
         spheres: vec![
-            /*
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
@@ -132,6 +129,7 @@ fn main() {
                 radius: 10000.0,
                 mat_id: 4
             },
+            /*
             Sphere {
                 origin: Point3::new(0.0, 0.0, -10020.0),
                 radius: 10000.0,
@@ -146,15 +144,16 @@ fn main() {
         ],
         point_lights: vec![
             /*
+            */
             PointLight {
-                pos: Point3f::new(10.0, 10.0, 10.0),
+                pos: Point3f::new(-2.0, 0.0, 1.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            /*
             PointLight {
                 pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            */
             PointLight {
                 pos: Point3f::new(0.0, 0.0, 1000.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
@@ -179,6 +178,7 @@ fn main() {
                 pos: Point3f::new(0.0, -1000.0, 0.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            */
         ],
         camera_pos: Point3::new(0.0, 2.0, 15.0),
         bvh: None
@@ -192,9 +192,11 @@ fn main() {
             .short("s").long("single-thread"))
         .arg(Arg::with_name("bvh")
             .short("b").long("bvh"))
-        .arg(Arg::with_name("INPUT").index(1))
+        .arg(Arg::with_name("WIDTH").index(1))
+        .arg(Arg::with_name("HEIGHT").index(2))
         .get_matches();
 
+    /*
     match matches.value_of("INPUT") {
         Some(filename) => {
             let mut obj_meshes = obj_to_meshes(filename);
@@ -207,10 +209,12 @@ fn main() {
         }
         None => {}
     }
+    */
 
     let multithreading = !matches.is_present("single-thread");
     let use_bvh = matches.is_present("bvh");
 
+    /*
     let mut rng: rand::XorShiftRng = rand::SeedableRng::from_seed(
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     for i in 0..100 {
@@ -228,6 +232,7 @@ fn main() {
         cube_mesh.transform(transform);
         scene.add_mesh(cube_mesh);
     }
+    */
 
     if use_bvh {
         println!("Building BVH.");
@@ -235,8 +240,10 @@ fn main() {
         println!("BVH building complete.");
     }
 
-    let image_width: u32 = 1280;
-    let image_height: u32 = 720;
+    let image_width: u32 = matches.value_of("WIDTH")
+        .unwrap().parse::<u32>().unwrap();
+    let image_height: u32 = matches.value_of("HEIGHT")
+        .unwrap().parse::<u32>().unwrap();
     let mut pixels = vec![0.0; (image_width * image_height * 4) as usize];
 
     let time = Local::now();

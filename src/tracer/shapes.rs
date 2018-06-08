@@ -97,9 +97,6 @@ impl Triangle {
         let c = e2.cross(pos - self.vertices[0].pos).magnitude();
         (a * self.vertices[0].normal + b * self.vertices[0].normal + c * self.vertices[0].normal) / (a + b + c)
     }
-
-
-
 }
 
 impl Intersectable for Triangle {
