@@ -75,6 +75,9 @@ fn main() {
             Material::simple(Color::new(0.8, 0.8, 0.8),
                              Color::new(0.0, 0.0, 0.0),
                              0.0),
+            Material::simple(Color::new(0.780392, 0.568627, 0.113725),
+                             Color::new(0.992157, 0.941176, 0.807843),
+                             27.8974)
         ],
         vec![
             Sphere {
@@ -111,12 +114,11 @@ fn main() {
             "resources/checker.png".to_string()
         ],
         vec![
-            /*
-            */
             PointLight {
                 pos: Point3f::new(5.0, 5.0, 5.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            /*
             PointLight {
                 pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
@@ -145,6 +147,7 @@ fn main() {
                 pos: Point3f::new(0.0, -1000.0, 0.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
+            */
         ],
         Point3::new(0.0, 2.0, 15.0)
     );
@@ -181,6 +184,17 @@ fn main() {
     let multithreading = !matches.is_present("single-thread");
     let use_bvh = matches.is_present("bvh");
     let use_gi = matches.is_present("gi");
+
+    let filename = "resources/teapot.obj";
+    let mut obj_meshes = obj_to_meshes(filename);
+    println!("Model {} successfully loaded.", filename);
+    for mut mesh in obj_meshes {
+        let transform = Matrix4f::from_translation(
+            Vector3f::new(-6.0, -3.0, -6.0));
+        mesh.transform(transform);
+        mesh.mat_id = 6;
+        scene.add_mesh(mesh);
+    }
 
     let mut plane = Mesh::plane(4, 10.0);
     let transform = Matrix4f::from_translation(Vector3f::new(0.0, -4.0, 0.0));
