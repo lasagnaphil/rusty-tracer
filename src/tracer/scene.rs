@@ -13,17 +13,18 @@ use cgmath::Vector3;
 
 #[derive(Clone)]
 pub struct Material {
-    pub surface_color: Color,
     pub reflectivity: f32,
     pub transparency: f32,
     pub refractive_index: f32,
+    pub ambient_color: Color,
+    pub surface_color: Color,
     pub specular_color: Color,
     pub shininess: f32
 }
 
 pub struct PointLight {
     pub pos: Point3f,
-    pub emission_color: Color
+    pub emission_color: Color,
 }
 
 pub struct Scene {
@@ -228,7 +229,7 @@ impl Scene {
                     };
                 }
             }
-            surface_color
+            0.1 * mat.ambient_color + surface_color
         }
     }
 

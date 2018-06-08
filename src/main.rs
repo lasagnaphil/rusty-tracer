@@ -66,7 +66,8 @@ fn main() {
                 transparency: 0.0,
                 refractive_index: 1.1,
                 shininess: 64.0,
-                specular_color: Color::new(1.0, 1.0, 1.0)
+                specular_color: Color::new(1.0, 1.0, 1.0),
+                ambient_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.2, 0.76, 0.1),
@@ -74,7 +75,8 @@ fn main() {
                 transparency: 0.5,
                 refractive_index: 1.1,
                 shininess: 0.0,
-                specular_color: Color::zero()
+                specular_color: Color::zero(),
+                ambient_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.9, 0.9, 0.2),
@@ -82,7 +84,8 @@ fn main() {
                 transparency: 0.5,
                 refractive_index: 1.1,
                 shininess: 0.0,
-                specular_color: Color::zero()
+                specular_color: Color::zero(),
+                ambient_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.1, 0.2, 0.9),
@@ -90,7 +93,8 @@ fn main() {
                 transparency: 0.0,
                 refractive_index: 1.1,
                 shininess: 32.0,
-                specular_color: Color::new(0.5, 0.5, 0.5)
+                specular_color: Color::new(0.5, 0.5, 0.5),
+                ambient_color: Color::zero()
             },
             Material {
                 surface_color: Color::new(0.8, 0.8, 0.8),
@@ -98,7 +102,8 @@ fn main() {
                 transparency: 0.0,
                 refractive_index: 1.1,
                 shininess: 0.0,
-                specular_color: Color::zero()
+                specular_color: Color::zero(),
+                ambient_color: Color::zero()
             },
         ],
         meshes: vec![
