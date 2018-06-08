@@ -177,13 +177,15 @@ impl Mesh {
             mat_id
         )
     }
-    pub fn plane(mat_id: usize) -> Mesh {
+    pub fn plane(mat_id: usize, tex_scale: f32) -> Mesh {
         Mesh::from_vertices(
             vec![
-                Vertex::from_floats(0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0),
-                Vertex::from_floats(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0),
-                Vertex::from_floats(1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0),
-                Vertex::from_floats(0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0),
+                Vertex::from_floats(-0.5, 0.0, -0.5, 0.0, 1.0, 0.0, 0.0, 0.0),
+                Vertex::from_floats(0.5, 0.0, -0.5, 0.0, 1.0, 0.0, tex_scale, 0.0),
+                Vertex::from_floats(0.5, 0.0, 0.5, 0.0, 1.0, 0.0, tex_scale, tex_scale),
+                Vertex::from_floats(-0.5, 0.0, -0.5, 0.0, 1.0, 0.0, 0.0, 0.0),
+                Vertex::from_floats(0.5, 0.0, 0.5, 0.0, 1.0, 0.0, tex_scale, tex_scale),
+                Vertex::from_floats(-0.5, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, tex_scale),
             ],
             mat_id
         )

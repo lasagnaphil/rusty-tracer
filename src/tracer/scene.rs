@@ -6,6 +6,8 @@ use std;
 use std::f32;
 use std::collections::HashMap;
 
+use image::GenericImage;
+
 use cgmath::prelude::*;
 use cgmath::Point3;
 use cgmath::Vector2;
@@ -19,7 +21,41 @@ pub struct Material {
     pub ambient_color: Color,
     pub surface_color: Color,
     pub specular_color: Color,
-    pub shininess: f32
+    pub shininess: f32,
+
+    pub surface_tex: Option<usize>
+}
+
+impl Material {
+    pub fn simple(surface_color: Color, specular_color: Color, shininess: f32) -> Self {
+        Material {
+            reflectivity: 0.0,
+            transparency: 0.0,
+            refractive_index: 1.1,
+            ambient_color: Color::zero(),
+            surface_color, specular_color, shininess,
+            surface_tex: None
+        }
+    }
+    pub fn complex(reflectivity: f32, transparency: f32, refractive_index: f32,
+                   surface_color: Color, specular_color: Color, shininess: f32) -> Self {
+        Material {
+            reflectivity, transparency, refractive_index,
+            ambient_color: Color::zero(),
+            surface_color, specular_color, shininess,
+            surface_tex: None
+        }
+    }
+    pub fn with_texture(surface_tex: usize, specular_color: Color, shininess: f32) -> Self {
+        Material {
+            reflectivity: 0.0,
+            transparency: 0.0,
+            refractive_index: 1.1,
+            ambient_color: Color::zero(),
+            surface_color: Color::zero(), specular_color, shininess,
+            surface_tex: Some(surface_tex)
+        }
+    }
 }
 
 pub struct PointLight {
@@ -27,11 +63,14 @@ pub struct PointLight {
     pub emission_color: Color,
 }
 
+use image;
+
 pub struct Scene {
     pub camera_pos: Point3f,
     pub materials: Vec<Material>,
     pub spheres: Vec<Sphere>,
     pub meshes: Vec<Mesh>,
+    pub textures: Vec<image::DynamicImage>,
     pub point_lights: Vec<PointLight>,
     pub bvh: Option<BVH>
 }
@@ -41,9 +80,15 @@ const BIAS: f32 = 1e-4;
 impl Scene {
     const MAX_RAY_DEPTH: u32 = 5;
 
-    pub fn new(materials: Vec<Material>, spheres: Vec<Sphere>, meshes: Vec<Mesh>,
+    pub fn new(materials: Vec<Material>, spheres: Vec<Sphere>, meshes: Vec<Mesh>, textures: Vec<String>,
                point_lights: Vec<PointLight>, camera_pos: Point3f) -> Self {
-        Scene { materials, spheres, meshes, point_lights, camera_pos, bvh: None }
+        // TODO: load textures
+        let textures: Vec<_> = textures.iter()
+            .map(|t| {
+                image::open(t).unwrap()
+            })
+            .collect();
+        Scene { materials, spheres, meshes, textures, point_lights, camera_pos, bvh: None }
     }
 
 
@@ -57,6 +102,16 @@ impl Scene {
 
     fn get_material_mut(self: &mut Self, id: usize) -> &mut Material {
         &mut self.materials[id]
+    }
+
+    fn get_texture_uv(self: &Self, id: usize, u: f32, v: f32) -> Color {
+        let texture = &self.textures[id];
+        let (width, height) = texture.dimensions();
+        let color = texture.get_pixel(
+            (u * width as f32) as u32 % width, (v * height as f32) as u32 % height);
+        Color::new(color[0] as f32 / 255.0,
+                   color[1] as f32 / 255.0,
+                   color[2] as f32 / 255.0)
     }
 
     fn get_triangles<'a>(self: &'a Self) -> Vec<Triangle> {
@@ -161,15 +216,23 @@ impl Scene {
                    mat_id: usize, tnear: f32, u: f32, v: f32, ray: &Ray, depth: u32) -> Color {
         let mat = self.get_material(mat_id);
         let hit_pos = ray.origin + tnear * ray.dir;
-        let hit_normal = match closest_shape {
+        let (hit_normal, surface_color) = match closest_shape {
             Shape::Sphere(sphere) => {
-                (hit_pos - sphere.origin).normalize()
+                ((hit_pos - sphere.origin).normalize(), mat.surface_color)
             },
             Shape::Triangle(triangle) => {
                 let normal = (1.0 - u - v) * triangle.vertices[0].normal
                     + u * triangle.vertices[1].normal
                     + v * triangle.vertices[2].normal;
-                reflect(ray.dir, normal)
+                let hit_normal = reflect(ray.dir, normal);
+                let texcoords = triangle.vertices[0].tex
+                    + u * (triangle.vertices[1].tex - triangle.vertices[0].tex)
+                    + v * (triangle.vertices[2].tex - triangle.vertices[0].tex);
+                let surface_color = match mat.surface_tex {
+                    Some(tex_id) => self.get_texture_uv(tex_id, texcoords.x, texcoords.y),
+                    None => mat.surface_color
+                };
+                (hit_normal, surface_color)
             },
             Shape::BoundingVolume(bounding_volume) => {
                 eprintln!("Unreachable code pos!");
@@ -197,11 +260,11 @@ impl Scene {
                 self.trace(&refraction_ray, depth + 1)
             } else { Color::zero() };
 
-            mat.surface_color.mul_element_wise(
+            surface_color.mul_element_wise(
                 reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
             )
         } else {
-            let mut surface_color = Color::zero();
+            let mut color = 0.1 * mat.ambient_color;
             for point_light in &self.point_lights {
                 if point_light.emission_color != Color::zero() {
                     let shadow_ray = Ray::new(hit_pos + hit_normal * BIAS, (point_light.pos - hit_pos).normalize());
@@ -221,15 +284,15 @@ impl Scene {
                     }
                     if !is_shadow {
                         let shadow_angle = hit_normal.dot(shadow_ray.dir);
-                        surface_color += shadow_angle.max(0.0) *
-                            mat.surface_color.mul_element_wise(point_light.emission_color);
+                        color += shadow_angle.max(0.0) *
+                            surface_color.mul_element_wise(point_light.emission_color);
                         let specular_angle = -ray.dir.dot(shadow_ray.dir);
-                        surface_color += specular_angle.max(0.0).powf(mat.shininess) *
+                        color += specular_angle.max(0.0).powf(mat.shininess) *
                             mat.specular_color.mul_element_wise(point_light.emission_color);
                     };
                 }
             }
-            0.1 * mat.ambient_color + surface_color
+            color
         }
     }
 

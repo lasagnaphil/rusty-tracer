@@ -21,8 +21,6 @@ use std::sync::{Arc, Mutex};
 
 use cgmath::prelude::*;
 use cgmath::Point3;
-use cgmath::Vector2;
-use cgmath::Vector3;
 
 use rayon::prelude::*;
 
@@ -58,57 +56,27 @@ use clap::{Arg, App};
 use rand::prelude::*;
 
 fn main() {
-    let mut scene = Scene {
-        materials: vec![
-            Material {
-                surface_color: Color::new(0.9, 0.32, 0.36),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                shininess: 64.0,
-                specular_color: Color::new(1.0, 1.0, 1.0),
-                ambient_color: Color::zero()
-            },
-            Material {
-                surface_color: Color::new(0.2, 0.76, 0.1),
-                reflectivity: 1.0,
-                transparency: 0.5,
-                refractive_index: 1.1,
-                shininess: 0.0,
-                specular_color: Color::zero(),
-                ambient_color: Color::zero()
-            },
-            Material {
-                surface_color: Color::new(0.9, 0.9, 0.2),
-                reflectivity: 1.0,
-                transparency: 0.5,
-                refractive_index: 1.1,
-                shininess: 0.0,
-                specular_color: Color::zero(),
-                ambient_color: Color::zero()
-            },
-            Material {
-                surface_color: Color::new(0.1, 0.2, 0.9),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                shininess: 32.0,
-                specular_color: Color::new(0.5, 0.5, 0.5),
-                ambient_color: Color::zero()
-            },
-            Material {
-                surface_color: Color::new(0.8, 0.8, 0.8),
-                reflectivity: 0.0,
-                transparency: 0.0,
-                refractive_index: 1.1,
-                shininess: 0.0,
-                specular_color: Color::zero(),
-                ambient_color: Color::zero()
-            },
+    let mut scene = Scene::new(vec![
+            Material::simple(Color::new(0.9, 0.32, 0.36),
+                             Color::new(1.0, 1.0, 1.0),
+                             64.0),
+            Material::complex(1.0, 0.5, 1.1,
+                              Color::new(0.2, 0.76, 0.1),
+                              Color::zero(),
+                              0.0),
+            Material::complex(1.0, 0.5, 1.1,
+                              Color::new(0.9, 0.9, 0.2),
+                              Color::zero(),
+                              0.0),
+            Material::simple(Color::new(0.1, 0.2, 0.9),
+                             Color::new(1.0, 1.0, 1.0),
+                             64.0),
+            Material::with_texture(0, Color::zero(), 0.0),
+            Material::simple(Color::new(0.8, 0.8, 0.8),
+                             Color::new(0.0, 0.0, 0.0),
+                             0.0),
         ],
-        meshes: vec![
-        ],
-        spheres: vec![
+        vec![
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
@@ -129,32 +97,26 @@ fn main() {
                 radius: 2.0,
                 mat_id: 3
             },
+            /*
             Sphere {
                 origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
                 mat_id: 4
             },
-            /*
-            Sphere {
-                origin: Point3::new(0.0, 0.0, -10020.0),
-                radius: 10000.0,
-                mat_id: 5
-            },
-            Sphere {
-                origin: Point3::new(0.0, 0.0, 10020.0),
-                radius: 10000.0,
-                mat_id: 5
-            },
             */
         ],
-        point_lights: vec![
+        vec![
+        ],
+        vec![
+            "resources/checker.png".to_string()
+        ],
+        vec![
             /*
             */
             PointLight {
-                pos: Point3f::new(-2.0, 0.0, 1.0),
+                pos: Point3f::new(5.0, 5.0, 5.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            /*
             PointLight {
                 pos: Point3f::new(-10.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
@@ -183,11 +145,9 @@ fn main() {
                 pos: Point3f::new(0.0, -1000.0, 0.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
-            */
         ],
-        camera_pos: Point3::new(0.0, 2.0, 15.0),
-        bvh: None
-    };
+        Point3::new(0.0, 2.0, 15.0)
+    );
 
     let matches = App::new("rusty-tracer")
         .version("1.0")
@@ -197,6 +157,8 @@ fn main() {
             .short("s").long("single-thread"))
         .arg(Arg::with_name("bvh")
             .short("b").long("bvh"))
+        .arg(Arg::with_name("gi")
+            .short("g").long("gi"))
         .arg(Arg::with_name("WIDTH").index(1))
         .arg(Arg::with_name("HEIGHT").index(2))
         .get_matches();
@@ -218,7 +180,14 @@ fn main() {
 
     let multithreading = !matches.is_present("single-thread");
     let use_bvh = matches.is_present("bvh");
+    let use_gi = matches.is_present("gi");
 
+    let mut plane = Mesh::plane(4, 10.0);
+    let transform = Matrix4f::from_translation(Vector3f::new(0.0, -4.0, 0.0));
+    let transform = transform * Matrix4f::from_scale(100.0);
+    let transform =
+    plane.transform(transform);
+    scene.add_mesh(plane);
     /*
     let mut rng: rand::XorShiftRng = rand::SeedableRng::from_seed(
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
