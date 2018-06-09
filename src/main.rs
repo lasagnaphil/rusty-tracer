@@ -58,7 +58,7 @@ use rand::prelude::*;
 fn main() {
     let mut scene = Scene::new(vec![
             Material::simple(Color::new(0.9, 0.32, 0.36),
-                             Color::new(1.0, 1.0, 1.0),
+                             Color::new(0.5, 0.5, 0.5),
                              64.0),
             Material::complex(1.0, 0.5, 1.1,
                               Color::new(0.2, 0.76, 0.1),
@@ -69,17 +69,19 @@ fn main() {
                               Color::zero(),
                               0.0),
             Material::simple(Color::new(0.1, 0.2, 0.9),
-                             Color::new(1.0, 1.0, 1.0),
-                             64.0),
+                             Color::new(0.5, 0.5, 0.5), 64.0),
             Material::with_texture(0, Color::zero(), 0.0),
             Material::simple(Color::new(0.8, 0.8, 0.8),
                              Color::new(0.0, 0.0, 0.0),
                              0.0),
             Material::simple(Color::new(0.780392, 0.568627, 0.113725),
                              Color::new(0.992157, 0.941176, 0.807843),
-                             27.8974)
+                             27.8974),
+            //Material::with_texture_normal(1, 2, Color::zero(), 0.0)
+            Material::with_texture(1, Color::zero(), 0.0)
         ],
         vec![
+            /*
             Sphere {
                 origin: Point3::new(-1.0, -2.0, -3.0),
                 radius: 2.0,
@@ -100,7 +102,6 @@ fn main() {
                 radius: 2.0,
                 mat_id: 3
             },
-            /*
             Sphere {
                 origin: Point3::new(0.0, -10004.0, 0.0),
                 radius: 10000.0,
@@ -111,11 +112,13 @@ fn main() {
         vec![
         ],
         vec![
-            "resources/checker.png".to_string()
+            "resources/checker.png".to_string(),
+            "resources/brickwall.jpg".to_string(),
+            "resources/brickwall_normal.jpg".to_string()
         ],
         vec![
             PointLight {
-                pos: Point3f::new(5.0, 5.0, 5.0),
+                pos: Point3f::new(0.0, 5.0, 2.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
             /*
@@ -185,6 +188,7 @@ fn main() {
     let use_bvh = matches.is_present("bvh");
     let use_gi = matches.is_present("gi");
 
+    /*
     let filename = "resources/teapot.obj";
     let mut obj_meshes = obj_to_meshes(filename);
     println!("Model {} successfully loaded.", filename);
@@ -195,13 +199,23 @@ fn main() {
         mesh.mat_id = 6;
         scene.add_mesh(mesh);
     }
+    */
 
-    let mut plane = Mesh::plane(4, 10.0);
+    let mut plane = Mesh::plane(4, 5.0);
     let transform = Matrix4f::from_translation(Vector3f::new(0.0, -4.0, 0.0));
     let transform = transform * Matrix4f::from_scale(100.0);
-    let transform =
     plane.transform(transform);
+    plane.create_tangents();
     scene.add_mesh(plane);
+
+    let mut cube = Mesh::cube(4);
+    let transform = Matrix4f::from_translation(Vector3f::new(0.0, 0.0, -15.0));
+    let transform = transform * Matrix4f::from_scale(10.0);
+    let transform = transform * Matrix4f::from_angle_y(cgmath::Deg(30.0));
+    cube.transform(transform);
+    cube.mat_id = 7;
+    cube.create_tangents();
+    scene.add_mesh(cube);
     /*
     let mut rng: rand::XorShiftRng = rand::SeedableRng::from_seed(
         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);

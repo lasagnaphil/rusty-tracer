@@ -57,7 +57,7 @@ pub fn obj_to_meshes(filename: &str) -> Vec<Mesh> {
                 .collect();
         }
 
-        Mesh { vertices, mat_id }
+        Mesh { vertices, tangents: None, mat_id }
     }).collect();
 
     meshes

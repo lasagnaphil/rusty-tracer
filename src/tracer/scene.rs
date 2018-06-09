@@ -12,6 +12,7 @@ use cgmath::prelude::*;
 use cgmath::Point3;
 use cgmath::Vector2;
 use cgmath::Vector3;
+use cgmath::Matrix3;
 
 #[derive(Clone)]
 pub struct Material {
@@ -23,7 +24,8 @@ pub struct Material {
     pub specular_color: Color,
     pub shininess: f32,
 
-    pub surface_tex: Option<usize>
+    pub surface_tex: Option<usize>,
+    pub surface_normal_tex: Option<usize>
 }
 
 impl Material {
@@ -34,7 +36,7 @@ impl Material {
             refractive_index: 1.1,
             ambient_color: Color::zero(),
             surface_color, specular_color, shininess,
-            surface_tex: None
+            surface_tex: None, surface_normal_tex: None
         }
     }
     pub fn complex(reflectivity: f32, transparency: f32, refractive_index: f32,
@@ -43,7 +45,7 @@ impl Material {
             reflectivity, transparency, refractive_index,
             ambient_color: Color::zero(),
             surface_color, specular_color, shininess,
-            surface_tex: None
+            surface_tex: None, surface_normal_tex: None
         }
     }
     pub fn with_texture(surface_tex: usize, specular_color: Color, shininess: f32) -> Self {
@@ -53,7 +55,19 @@ impl Material {
             refractive_index: 1.1,
             ambient_color: Color::zero(),
             surface_color: Color::zero(), specular_color, shininess,
-            surface_tex: Some(surface_tex)
+            surface_tex: Some(surface_tex), surface_normal_tex: None
+        }
+    }
+
+    pub fn with_texture_normal(surface_tex: usize, surface_normal_tex: usize,
+                               specular_color: Color, shininess: f32) -> Self {
+        Material {
+            reflectivity: 0.0,
+            transparency: 0.0,
+            refractive_index: 1.1,
+            ambient_color: Color::zero(),
+            surface_color: Color::zero(), specular_color, shininess,
+            surface_tex: Some(surface_tex), surface_normal_tex: Some(surface_normal_tex)
         }
     }
 }
@@ -91,7 +105,6 @@ impl Scene {
         Scene { materials, spheres, meshes, textures, point_lights, camera_pos, bvh: None }
     }
 
-
     pub fn add_mesh(self: &mut Self, mesh: Mesh) {
         self.meshes.push(mesh);
     }
@@ -114,6 +127,27 @@ impl Scene {
                    color[2] as f32 / 255.0)
     }
 
+    fn get_texture_normal_uv(self: &Self, normal_id: usize, u: f32, v: f32) -> Vector3f {
+        let texture = &self.textures[normal_id];
+        let (width, height) = texture.dimensions();
+        let color = texture.get_pixel(
+            (u * width as f32) as u32 % width, (v * height as f32) as u32 % height);
+        let normal = Vector3f::new(color[0] as f32 / 255.0 * 2.0 - 1.0,
+                                   color[1] as f32 / 255.0 * 2.0 - 1.0,
+                                   color[2] as f32 / 255.0 * 2.0 - 1.0);
+        normal.normalize()
+    }
+
+    /*
+    fn get_texture_bump_normal_uv(self: &Self, bump_id: usize,
+                               normal: Vector3f, u: f32, v: f32) -> Vector3f {
+        let texture = &self.textures[bump_id];
+        let (width, height) = texture.dimensions();
+        let color = texture.get_pixel(
+            (u * width as f32) as u32 % width, (v * height as f32) as u32 % height);
+    }
+    */
+
     fn get_triangles<'a>(self: &'a Self) -> Vec<Triangle> {
         self.meshes.iter()
             .flat_map(|m| {
@@ -134,6 +168,7 @@ impl Scene {
         let mut u = 0.0;
         let mut v = 0.0;
         let mut mat_id = 0;
+        let mut tangent: Option<Vector3f> = None;
 
         // Find the nearest collision of ray with scene
         for sphere in &self.spheres {
@@ -189,7 +224,7 @@ impl Scene {
             }
         }
         else {
-            for mesh in &self.meshes {
+            for (m_id, mesh) in self.meshes.iter().enumerate() {
                 for i in 0..(mesh.vertices.len() / 3) {
                     let triangle = Triangle::from_vertices(&mesh.vertices[3 * i..3 * i + 3]);
                     if let Some((t, tu, tv)) = triangle.intersect(&ray) {
@@ -199,21 +234,23 @@ impl Scene {
                             v = tv;
                             closest_shape = Some(Shape::Triangle(triangle));
                             mat_id = mesh.mat_id;
+                            tangent = match mesh.tangents {
+                                Some(ref tangent) => Some(tangent[i]),
+                                None => None
+                            };
                         }
                     }
                 }
             }
         }
 
-        if let Some(shape) = closest_shape {
-            self.trace_shape(shape, mat_id, tnear, u, v, ray, depth)
-        } else {
-            Color::zero()
+        match closest_shape {
+            Some(_) => {},
+            None => { return Color::zero(); }
         }
-    }
+        let closest_shape = closest_shape.unwrap();
 
-    fn trace_shape(self: &Self, closest_shape: Shape,
-                   mat_id: usize, tnear: f32, u: f32, v: f32, ray: &Ray, depth: u32) -> Color {
+        // Beginning of ray tracing
         let mat = self.get_material(mat_id);
         let hit_pos = ray.origin + tnear * ray.dir;
         let (hit_normal, surface_color) = match closest_shape {
@@ -221,13 +258,38 @@ impl Scene {
                 ((hit_pos - sphere.origin).normalize(), mat.surface_color)
             },
             Shape::Triangle(triangle) => {
-                let normal = (1.0 - u - v) * triangle.vertices[0].normal
-                    + u * triangle.vertices[1].normal
-                    + v * triangle.vertices[2].normal;
-                let hit_normal = reflect(ray.dir, normal);
                 let texcoords = triangle.vertices[0].tex
                     + u * (triangle.vertices[1].tex - triangle.vertices[0].tex)
                     + v * (triangle.vertices[2].tex - triangle.vertices[0].tex);
+
+                let normal = match mat.surface_normal_tex {
+                    Some(normal_id) => {
+                        let texture_normal = self.get_texture_normal_uv(normal_id, texcoords.x, texcoords.y);
+                        let normal = (1.0 - u - v) * triangle.vertices[0].normal
+                                     + u * triangle.vertices[1].normal
+                                     + v * triangle.vertices[2].normal;
+                        let tangent = tangent.unwrap();
+                        let tangent = (tangent - tangent.dot(normal) * normal).normalize();
+                        let bitangent = normal.cross(tangent).normalize();
+                        /*
+                        let tbn = Matrix3::new(
+                            tangent.x, bitangent.x, normal.x,
+                            tangent.y, bitangent.y, normal.y,
+                            tangent.z, bitangent.z, normal.z
+                        );
+                        */
+                        let tbn = Matrix3::new(
+                            tangent.x, tangent.y, tangent.z,
+                            bitangent.x, bitangent.y, bitangent.z,
+                            normal.x, normal.y, normal.z);
+
+                        tbn * texture_normal
+                    },
+                    None => (1.0 - u - v) * triangle.vertices[0].normal
+                        + u * triangle.vertices[1].normal
+                        + v * triangle.vertices[2].normal
+                };
+                let hit_normal = reflect(ray.dir, normal);
                 let surface_color = match mat.surface_tex {
                     Some(tex_id) => self.get_texture_uv(tex_id, texcoords.x, texcoords.y),
                     None => mat.surface_color

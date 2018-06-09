@@ -126,68 +126,93 @@ impl Intersectable for Triangle {
 #[derive(Clone)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
-    pub mat_id: usize
+    pub tangents: Option<Vec<Vector3f>>,
+    pub mat_id: usize,
 }
 
 impl Mesh {
-    pub fn from_vertices(vertices: Vec<Vertex>, mat_id: usize) -> Self {
-        Mesh { vertices, mat_id }
+    pub fn from_vertices(vertices: Vec<Vertex>, mat_id: usize,
+                         tangents: Option<Vec<Vector3f>>) -> Self {
+        Mesh { vertices, tangents, mat_id }
+    }
+
+    pub fn create_tangents(self: &mut Self) {
+        let tangents = self.vertices.chunks(3)
+            .map(|vertices| {
+                let dtex1 = vertices[1].tex - vertices[0].tex;
+                let dtex2 = vertices[2].tex - vertices[1].tex;
+                let e1 = vertices[1].pos - vertices[0].pos;
+                let e2 = vertices[2].pos - vertices[1].pos;
+                let d = 1.0 / (dtex1.x * dtex2.y - dtex2.x * dtex1.y);
+                let tangent = Vector3f::new(d * (dtex2.y * e1.x - dtex1.y * e2.x),
+                                            d * (dtex2.y * e1.y - dtex1.y * e2.y),
+                                            d * (dtex2.y * e1.z - dtex1.y * e2.z));
+                println!("{:?}", tangent.normalize());
+                tangent.normalize()
+            })
+            .collect();
+        self.tangents = Some(tangents);
     }
 
     pub fn cube(mat_id: usize) -> Mesh {
+        let vertices = vec![
+            Vertex::from_floats(-0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 0.0),
+            Vertex::from_floats(0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 0.0),
+            Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 1.0),
+            Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 1.0),
+            Vertex::from_floats(-0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 0.0),
+            Vertex::from_floats(-0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 0.0),
+            Vertex::from_floats(0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 0.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 1.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 1.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5, -0.5, -1.0,  0.0,  0.0,  1.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5,  0.5, -1.0,  0.0,  0.0,  0.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(0.5,  0.5, -0.5,  1.0,  0.0,  0.0,  1.0, 1.0),
+            Vertex::from_floats(0.5, -0.5, -0.5,  1.0,  0.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(0.5, -0.5, -0.5,  1.0,  0.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(0.5, -0.5,  0.5,  1.0,  0.0,  0.0,  0.0, 0.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  1.0, 1.0),
+            Vertex::from_floats(0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  0.0, 0.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(-0.5,  0.5, -0.5,  0.0,  1.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  1.0,  0.0,  1.0, 1.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  0.0, 0.0),
+            Vertex::from_floats(-0.5, 0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0),
+        ];
+
         Mesh::from_vertices(
-            vec![
-                Vertex::from_floats(-0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 0.0),
-                Vertex::from_floats(0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 0.0),
-                Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 1.0),
-                Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  1.0, 1.0),
-                Vertex::from_floats(-0.5,  0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 1.0),
-                Vertex::from_floats(-0.5, -0.5, -0.5,  0.0,  0.0, -1.0,  0.0, 0.0),
-                Vertex::from_floats(-0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 0.0),
-                Vertex::from_floats(0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 0.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 1.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 1.0),
-                Vertex::from_floats(-0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 1.0),
-                Vertex::from_floats(-0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 0.0),
-                Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(-0.5,  0.5, -0.5, -1.0,  0.0,  0.0,  1.0, 1.0),
-                Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(-0.5, -0.5,  0.5, -1.0,  0.0,  0.0,  0.0, 0.0),
-                Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  1.0,  0.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(0.5,  0.5, -0.5,  1.0,  0.0,  0.0,  1.0, 1.0),
-                Vertex::from_floats(0.5, -0.5, -0.5,  1.0,  0.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(0.5, -0.5, -0.5,  1.0,  0.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(0.5, -0.5,  0.5,  1.0,  0.0,  0.0,  0.0, 0.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  1.0,  0.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(-0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  1.0, 1.0),
-                Vertex::from_floats(0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(-0.5, -0.5,  0.5,  0.0, -1.0,  0.0,  0.0, 0.0),
-                Vertex::from_floats(-0.5, -0.5, -0.5,  0.0, -1.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(-0.5,  0.5, -0.5,  0.0,  1.0,  0.0,  0.0, 1.0),
-                Vertex::from_floats(0.5,  0.5, -0.5,  0.0,  1.0,  0.0,  1.0, 1.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  1.0, 0.0),
-                Vertex::from_floats(-0.5,  0.5,  0.5,  0.0,  1.0,  0.0,  0.0, 0.0),
-                Vertex::from_floats(-0.5, 0.5, -0.5, 0.0, 1.0, 0.0, 0.0, 1.0),
-            ],
-            mat_id
+            vertices,
+            mat_id,
+            None
         )
     }
     pub fn plane(mat_id: usize, tex_scale: f32) -> Mesh {
-        Mesh::from_vertices(
-            vec![
+        let vertices = vec![
                 Vertex::from_floats(-0.5, 0.0, -0.5, 0.0, 1.0, 0.0, 0.0, 0.0),
                 Vertex::from_floats(0.5, 0.0, -0.5, 0.0, 1.0, 0.0, tex_scale, 0.0),
                 Vertex::from_floats(0.5, 0.0, 0.5, 0.0, 1.0, 0.0, tex_scale, tex_scale),
                 Vertex::from_floats(-0.5, 0.0, -0.5, 0.0, 1.0, 0.0, 0.0, 0.0),
                 Vertex::from_floats(0.5, 0.0, 0.5, 0.0, 1.0, 0.0, tex_scale, tex_scale),
                 Vertex::from_floats(-0.5, 0.0, 0.5, 0.0, 1.0, 0.0, 0.0, tex_scale),
-            ],
-            mat_id
+            ];
+        Mesh::from_vertices(
+            vertices,
+            mat_id,
+            None
         )
     }
 
