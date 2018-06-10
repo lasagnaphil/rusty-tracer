@@ -140,7 +140,7 @@ fn main() {
         vec![],
         vec![
             PointLight {
-                pos: Point3f::new(0.0, 5.0, 2.0),
+                pos: Point3f::new(0.0, 10.0, 10.0),
                 // pos: Point3f::new(3.0, -2.0, -1.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
@@ -193,8 +193,7 @@ fn main() {
         vec![],
         vec![
             PointLight {
-                pos: Point3f::new(0.0, 5.0, 2.0),
-                // pos: Point3f::new(3.0, -2.0, -1.0),
+                pos: Point3f::new(0.0, 10.0, 10.0),
                 emission_color: Color::new(1.0, 1.0, 1.0)
             },
         ],
@@ -203,6 +202,7 @@ fn main() {
 
     let mut scene5 = Scene::new(materials.clone(), textures.clone(),
        vec![
+           /*
            Sphere {
                origin: Point3::new(-1.0, -2.0, -3.0),
                radius: 2.0,
@@ -213,21 +213,24 @@ fn main() {
                radius: 2.0,
                mat_id: 1
            },
+           */
            Sphere {
-               origin: Point3::new(2.0, -2.0, -6.0),
+               origin: Point3::new(0.0, -2.0, -3.0),
                radius: 2.0,
                mat_id: 1
            },
+           /*
            Sphere {
                origin: Point3::new(7.0, -2.0, -8.0),
                radius: 2.0,
                mat_id: 8
            },
+           */
        ],
        vec![],
        vec![
            PointLight {
-               pos: Point3f::new(4.0, -1.5, -0.5),
+               pos: Point3f::new(0.0, 0.0, -1.0),
                emission_color: Color::new(1.0, 1.0, 1.0)
            },
        ],
@@ -268,7 +271,7 @@ fn main() {
         mesh.transform(transform);
         mesh.mat_id = 6;
         match scene_num {
-            1 | 2 | 5 => { scene.add_mesh(mesh); },
+            1 | 2  => { scene.add_mesh(mesh); },
             _ => {}
         }
     }
@@ -282,7 +285,9 @@ fn main() {
         2 => { plane.mat_id = 3; }
         _ => {}
     };
-    scene.add_mesh(plane);
+    if scene_num != 5 {
+        scene.add_mesh(plane);
+    }
 
     let mut cube = Mesh::cube(4);
     let transform = Matrix4f::from_translation(Vector3f::new(0.0, 0.0, -15.0));
@@ -296,7 +301,9 @@ fn main() {
         _ => {},
     };
     cube.create_tangents();
-    scene.add_mesh(cube);
+    if scene_num != 5 {
+        scene.add_mesh(cube);
+    }
 
     let image_width: u32 = matches.value_of("WIDTH")
         .unwrap().parse::<u32>().unwrap();
