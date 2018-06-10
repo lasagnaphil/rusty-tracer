@@ -43,7 +43,7 @@ cargo run --release -- 1 1920 1080 3 output.png
 
 \section{Dependencies}
 
-프로그램에 사용한 패키지들은 다음과 같다. (전체 Rust cargo 패키지 목록은 프로젝트의 \texttt{Cargo.toml}에서 확인할 수 있다.)
+프로그램에 사용한 패키지들은 다음과 같다. (Rust 패키지 목록은 프로젝트의 \texttt{Cargo.toml}에서 확인할 수 있다.)
 
 \begin{itemize}
   \item cgmath: 선형대수 라이브러리.
@@ -69,7 +69,7 @@ cargo run --release -- 1 1920 1080 3 output.png
 위의 사진에서 각각의 물체가 나타내는 것들:
 
 \begin{itemize}
-  \item Ray tracing spheres \& polygons (주전자와, 정육면체 모두 삼각형의 집합인 Mesh로 표현하여 렌더링했다.)
+  \item Ray tracing spheres \& polygons (주전자와 정육면체 모두 삼각형의 집합인 Mesh로 표현하여 렌더링했다.)
 
   \item Recursive reflection \& refraction
     \begin{itemize}
@@ -77,11 +77,11 @@ cargo run --release -- 1 1920 1080 3 output.png
       \item 왼쪽에서 3번째 구는 reflection만 하고 있다. (\texttt{reflection=1.0, refraction=0.0, color=rgb(0.9, 0.9, 0.9)}) 약간 어둡긴 하지만, 밑에 바닥 타일이 반사되고 있는 것을 관찰할 수 있다.
     \end{itemize}
 
-  \item Phong illumination (Specular한 효과는 이 이미지에서는 확인하기 어려울 수 있는데, 밑의 사진들에서 더욱 자세히 알아볼 것이다.)
+  \item Phong illumination (Specular한 효과는 이 이미지에서 확인하기 어려울 수 있는데, 밑의 사진들에서 더욱 자세히 알아볼 것이다.)
 
   \item OBJ file loading (주전자): \texttt{resources/teapot.obj}를 로딩하였다.
 
-  \item Image file exporting: \texttt{result.png} 생성됨.
+  \item Image file exporting: \texttt{final.png} 생성됨.
 
   \item Texture mapped spheres and polygons:
     \begin{itemize}
@@ -90,7 +90,7 @@ cargo run --release -- 1 1920 1080 3 output.png
       \item 바닥 타일: \texttt{resources/checker.png} 사용
     \end{itemize}
 
-  \item Normal mapping (*): 벽돌 텍스쳐의 굴곡들을 더욱 실감나게 보여주기 위해 Normal mapping을 사용하였다. 고전적으로는 Bump mapping을 써서 이 문제를 해결했지만, 요즘에는 uv 좌표당 노말벡터가 이미지의 rgb값으로 담겨있는 normal map를 더욱 많이 볼 수 있다. (더욱 예쁜 결과를 내주고, 일단 인터넷에서 bump map보다 normal map을 찾기 훨씬 쉽기 때문에 사용했다) 이것을 눈으로 한번에 구분하는게 힘들 수 있기 때문에, 밑의 사진들에서 더욱 자세히 알아볼 것이다.)
+  \item Normal mapping (*): 벽돌 텍스쳐의 굴곡들을 더욱 실감나게 보여주기 위해 Normal mapping을 사용하였다. 고전적으로는 Bump mapping을 써서 이 문제를 해결했지만, 요즘에는 uv 좌표당 노말벡터가 이미지의 rgb값으로 담겨있는 normal map를 더욱 많이 볼 수 있다. (일단 더욱 예쁜 결과를 내주고, 인터넷에서 bump map보다 normal map을 찾기 훨씬 쉽기 때문에 사용했다.) 이것을 눈으로 한번에 구분하는게 힘들 수 있기 때문에, 밑의 사진들에서 더욱 자세히 알아볼 것이다.)
 
   \item Supersampling (*): 레이 트레이싱의 문제점 중 하나는 픽셀당 광선 하나를 쏘기 때문에, 물체들의 경게선들 부근의 픽셀들이 부드럽게 이어져 있지 않을 수 있다는 것이다. 이것을 해결하는 알고리즘은 다양하지만, 여기서 우리는 가장 간단하고 정확한 방법으로 기존 이미지보다 n배 더 크게 렌더링한 다음 n*n크기의 cell의 픽셀들의 색을 평균하여 다시 한 픽셀로 줄이는 방식으로 이미지를 더욱 부드럽게 만든다. (위 이미지에서 sample rate는 3이다.)
     
@@ -110,6 +110,7 @@ cargo run --release -- 1 1920 1080 3 output.png
   \texttt{cargo run --release -- 5 1920 1080 1 specular.png}
 \end{figure}
 
+Specular lighting의 효과를 위 렌더링 결과에서 볼 수 있다.
 
 \begin{figure}[H]
   \centering
@@ -123,7 +124,7 @@ cargo run --release -- 1 1920 1080 3 output.png
 \end{figure}
 
 
-Normal mapping이 되어있는지를 더욱 자세히 확인하기 위해서 다음과 같이 두 사진을 비교해 보았다. 미묘한 차이이지만, 위쪽의 그림이 아래쪽보다 조금 더 벽돌 사이의 굴곡이 어둡게 표현된 것을 알 수 있다.
+Normal mapping이 되어있는지를 더욱 자세히 확인하기 위해서 다음과 같이 두 사진을 비교해 보았다. 자세히 보면 윗쪽의 그림이 아래쪽 그림보다 벽돌들 사이의 굴곡들이 더 자세히 표현되었다는 것을 알 수 있다.
 
 \begin{figure}[H]
   \centering
@@ -135,7 +136,7 @@ Normal mapping이 되어있는지를 더욱 자세히 확인하기 위해서 다
   \texttt{cargo run --release -- 1 1920 1080 1 final-no-supersampling.png}
 \end{figure}
 
-비슷한 방법대로 Supersampling을 적용한 사진과 적용하지 않은 두 사진을 비교해 보았다. 위쪽의 그림의 경계선들이 더 자연스럽다는 것을 알 수 있다.
+비슷한 방법대로 Supersampling을 적용한 사진과 적용하지 않은 두 사진을 비교해 보았다. 위쪽의 그림의 경계선들이 더 매끄럽다는 것을 알 수 있다.
 
 이외의 사진들 (\texttt{spheres1.png} 부터 \texttt{spheres6.png} 까지) 는 ray tracer를 제작하는 과정 속에서 만든 이미지들을 순서대로 나열해 놓은 것이다. 여기서는 좀 더 다양한 refraction 효과를 주로 관찰할 수 있다.
 
