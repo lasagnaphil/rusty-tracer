@@ -147,7 +147,6 @@ impl Mesh {
                 let tangent = Vector3f::new(d * (dtex2.y * e1.x - dtex1.y * e2.x),
                                             d * (dtex2.y * e1.y - dtex1.y * e2.y),
                                             d * (dtex2.y * e1.z - dtex1.y * e2.z));
-                println!("{:?}", tangent.normalize());
                 tangent.normalize()
             })
             .collect();
@@ -168,12 +167,12 @@ impl Mesh {
             Vertex::from_floats(0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   1.0, 1.0),
             Vertex::from_floats(-0.5,  0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 1.0),
             Vertex::from_floats(-0.5, -0.5,  0.5,  0.0,  0.0, 1.0,   0.0, 0.0),
-            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
             Vertex::from_floats(-0.5,  0.5, -0.5, -1.0,  0.0,  0.0,  1.0, 1.0),
-            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
-            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5, -0.5, -0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
             Vertex::from_floats(-0.5, -0.5,  0.5, -1.0,  0.0,  0.0,  0.0, 0.0),
-            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  1.0, 0.0),
+            Vertex::from_floats(-0.5,  0.5,  0.5, -1.0,  0.0,  0.0,  0.0, 1.0),
             Vertex::from_floats(0.5,  0.5,  0.5,  1.0,  0.0,  0.0,  1.0, 0.0),
             Vertex::from_floats(0.5,  0.5, -0.5,  1.0,  0.0,  0.0,  1.0, 1.0),
             Vertex::from_floats(0.5, -0.5, -0.5,  1.0,  0.0,  0.0,  0.0, 1.0),
@@ -247,6 +246,7 @@ lazy_static! {
     ];
 }
 
+#[derive(Clone)]
 pub struct BoundingVolume {
     pub ranges: [(f32, f32); NUM_PLANE_NORMALS],
     pub mesh: Mesh
@@ -286,17 +286,6 @@ impl BoundingVolume {
         }
         if imin < NUM_PLANE_NORMALS {
             Some((tnear_final, tfar_final, imin))
-                /*
-            if tnear_final > 0.0 {
-                Some((tnear_final, tfar_final, imin))
-            }
-            else if tfar_final > 0.0 {
-                Some((0.0, tfar_final, imin))
-            }
-            else {
-                None
-            }
-            */
         } else { None }
     }
 }

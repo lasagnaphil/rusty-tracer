@@ -70,8 +70,20 @@ impl Material {
             surface_tex: Some(surface_tex), surface_normal_tex: Some(surface_normal_tex)
         }
     }
+
+    pub fn with_emission(emission_color: Color) -> Self {
+        Material {
+            reflectivity: 0.0,
+            transparency: 0.0,
+            refractive_index: 1.1,
+            ambient_color: emission_color,
+            surface_color: Color::zero(), specular_color: Color::zero(), shininess: 0.0,
+            surface_tex: None, surface_normal_tex: None
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct PointLight {
     pub pos: Point3f,
     pub emission_color: Color,
@@ -79,6 +91,7 @@ pub struct PointLight {
 
 use image;
 
+#[derive(Clone)]
 pub struct Scene {
     pub camera_pos: Point3f,
     pub materials: Vec<Material>,
@@ -94,9 +107,9 @@ const BIAS: f32 = 1e-4;
 impl Scene {
     const MAX_RAY_DEPTH: u32 = 5;
 
-    pub fn new(materials: Vec<Material>, spheres: Vec<Sphere>, meshes: Vec<Mesh>, textures: Vec<String>,
+    pub fn new(materials: Vec<Material>, textures: Vec<String>,
+               spheres: Vec<Sphere>, meshes: Vec<Mesh>,
                point_lights: Vec<PointLight>, camera_pos: Point3f) -> Self {
-        // TODO: load textures
         let textures: Vec<_> = textures.iter()
             .map(|t| {
                 image::open(t).unwrap()
@@ -255,7 +268,32 @@ impl Scene {
         let hit_pos = ray.origin + tnear * ray.dir;
         let (hit_normal, surface_color) = match closest_shape {
             Shape::Sphere(sphere) => {
-                ((hit_pos - sphere.origin).normalize(), mat.surface_color)
+                let normal = (hit_pos - sphere.origin).normalize();
+                let texcoords = Point2f::new(
+                    0.5 + normal.x.atan2(normal.z) / (2.0 * f32::consts::PI),
+                    0.5 - f32::asin(normal.y) / f32::consts::PI);
+
+                let normal = match mat.surface_normal_tex {
+                    Some(normal_id) => {
+                        let texture_normal = self.get_texture_normal_uv(normal_id, texcoords.x, texcoords.y);
+                        let tangent = Vector3f::new(texture_normal.x, 0.0, -texture_normal.z);
+                        let bitangent = Vector3f::new(-texture_normal.y, texture_normal.x, 0.0);
+                        let tbn = Matrix3::new(
+                            tangent.x, tangent.y, tangent.z,
+                            bitangent.x, bitangent.y, bitangent.z,
+                            normal.x, normal.y, normal.z);
+                        tbn * texture_normal
+                    },
+                    None => normal
+                };
+                let surface_color = match mat.surface_tex {
+                    Some(tex_id) => {
+                        self.get_texture_uv(tex_id, texcoords.x, texcoords.y)
+                    }
+                    None => mat.surface_color
+                };
+
+                (normal, surface_color)
             },
             Shape::Triangle(triangle) => {
                 let texcoords = triangle.vertices[0].tex
@@ -271,13 +309,6 @@ impl Scene {
                         let tangent = tangent.unwrap();
                         let tangent = (tangent - tangent.dot(normal) * normal).normalize();
                         let bitangent = normal.cross(tangent).normalize();
-                        /*
-                        let tbn = Matrix3::new(
-                            tangent.x, bitangent.x, normal.x,
-                            tangent.y, bitangent.y, normal.y,
-                            tangent.z, bitangent.z, normal.z
-                        );
-                        */
                         let tbn = Matrix3::new(
                             tangent.x, tangent.y, tangent.z,
                             bitangent.x, bitangent.y, bitangent.z,
@@ -297,8 +328,7 @@ impl Scene {
                 (hit_normal, surface_color)
             },
             Shape::BoundingVolume(bounding_volume) => {
-                eprintln!("Unreachable code pos!");
-                std::process::exit(2);
+                panic!("Unreachable code pos!");
             }
         };
         let incident_angle = -ray.dir.dot(hit_normal);
@@ -322,11 +352,11 @@ impl Scene {
                 self.trace(&refraction_ray, depth + 1)
             } else { Color::zero() };
 
-            surface_color.mul_element_wise(
+            mat.ambient_color + surface_color.mul_element_wise(
                 reflection_color * fresnel + refraction_color * (1.0 - fresnel) * mat.transparency
             )
         } else {
-            let mut color = 0.1 * mat.ambient_color;
+            let mut color = mat.ambient_color;
             for point_light in &self.point_lights {
                 if point_light.emission_color != Color::zero() {
                     let shadow_ray = Ray::new(hit_pos + hit_normal * BIAS, (point_light.pos - hit_pos).normalize());

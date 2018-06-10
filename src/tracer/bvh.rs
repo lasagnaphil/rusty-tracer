@@ -3,6 +3,7 @@ use super::scene::*;
 
 use cgmath::prelude::*;
 
+#[derive(Clone)]
 pub struct BVH {
     pub bounding_volumes: Vec<BoundingVolume>
 }
